@@ -1,6 +1,7 @@
 platte_gebrochen.jpg
 platte_riss.jpg
 termux-app-0.75
+termux-app-0.75.zip
 .classpath
 ofen.ino.bin
 ofen.ino.eep
@@ -9,3 +10,4 @@ ofen.ino.hex
 test.exe
 test.c
 test
+build/*
