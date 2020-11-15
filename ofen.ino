@@ -6,9 +6,9 @@
 
 #define MAX_CLIENTS 5
 
-#define DISPLAY_WIDTH (84)
+#define DISPLAY_WIDTH 84
 #define DISPLAY_HEIGHT 20
-#define DISPLAY_LENGTH (DISPLAY_WIDTH * DISPLAY_HEIGHT * 3)
+#define DISPLAY_LENGTH (DISPLAY_WIDTH * DISPLAY_HEIGHT * 3) + DISPLAY_HEIGHT
 
 #define GPIO_COIL_A 22
 #define GPIO_COIL_B 23
@@ -75,22 +75,25 @@ void IRAM_ATTR coilBReset(){
 
 void display(){
   char displayChars[DISPLAY_LENGTH] = {};
-  //initializeDisplayChars(displayChars);
+  initializeDisplayChars(displayChars);
   struct Color displayForegroundInvColor[DISPLAY_WIDTH * DISPLAY_HEIGHT] = {};
   struct Color displayBackgroundColor[DISPLAY_WIDTH * DISPLAY_HEIGHT] = {};
-  //drawSeparationLines(displayChars);
-  char appendString[9] = {};
+  drawSeparationLines(displayChars);
+  char appendString[10] = {};
   sprintf(appendString, "%d", temperature);
 
-  appendText(displayChars, appendString);
+  appendText(displayChars, "12:34:56h1105oC/1255oC1496W");
   finishDisplayChars(displayChars);
   sendDisplay(displayChars);
 }
 
+void * positionToPointer(char *displayChars, int x, int y){
+  return displayChars + y * (DISPLAY_WIDTH * 3 + 1) + x * 3;
+}
+
 void initializeDisplayChars(char displayChars[DISPLAY_LENGTH]){
-  for(int i = DISPLAY_WIDTH * 3 - 1; i < DISPLAY_LENGTH; i += DISPLAY_WIDTH * 3){
-    displayChars[i - 1] = '\n';
-    displayChars[i] = '\r';
+  for(int i = DISPLAY_WIDTH * 3; i < DISPLAY_LENGTH - 1; i += DISPLAY_WIDTH * 3 + 1){
+    displayChars[i] = '\n';
   }
 }
 
@@ -101,6 +104,12 @@ void finishDisplayChars(char displayChars[DISPLAY_LENGTH]){
       displayChars[i] = ' ';
       displayChars[i + 1] = '\u001A';
       displayChars[i + 2] = '\u001A';
+      // Serial.print("filled in voids at: ");
+      // Serial.print(i);
+      // Serial.print(", ");
+      // Serial.print(i + 1);
+      // Serial.print(" and ");
+      // Serial.println(i + 2);
       i += 3;
     }else{
       i += 1;
@@ -159,11 +168,14 @@ void appendText(char displayChars[DISPLAY_LENGTH], char *text){
   while(displayChars[displayIterator] && displayIterator < DISPLAY_LENGTH){
     displayIterator++;
   }
-
-  char pattern[28]; //x, y, 3 chars for unicode and one char for terminating \0 character
+  int distanceFromLineEnding = DISPLAY_WIDTH * 3 - (displayIterator + 1) % (DISPLAY_WIDTH * 3 + 1);
+  if(distanceFromLineEnding >= 0 && distanceFromLineEnding <= 8){
+    displayIterator += distanceFromLineEnding + 1;
+  }
+  char pattern[28];
   memcpy(pattern, letterToPattern(text[0]), 28);
   for(int i = 0; i < 3; i++){
-    int displayCharsPos = displayIterator + i * DISPLAY_WIDTH * 3;
+    int displayCharsPos = displayIterator + i * (DISPLAY_WIDTH * 3 + 1);
     void *displayCharsPnt = displayChars + displayCharsPos;
 
     int patternPos = i * 9;
@@ -180,21 +192,16 @@ void appendText(char displayChars[DISPLAY_LENGTH], char *text){
 void drawSeparationLines(char displayChars[DISPLAY_LENGTH]){
   for(int i = 0; i < 3; i++){
     char line[4] = "┃";
-    void *displayCharsPnt = displayChars + i * DISPLAY_WIDTH * 3 + 27;
-    memcpy(displayCharsPnt, line, 3);
-    displayCharsPnt = displayChars + i * DISPLAY_WIDTH * 3 + 64;
-    memcpy(displayCharsPnt, line, 3);
+    memcpy(positionToPointer(displayChars, 27, i), line, 3);
+    memcpy(positionToPointer(displayChars, 67, i), line, 3);
   }
   for(int i = 0; i < DISPLAY_WIDTH; i++){
     char line[4] = "━";
-    void *displayCharsPnt = displayChars + 3 * DISPLAY_WIDTH + i * 3;
-    memcpy(displayCharsPnt, line, 3);
+    memcpy(positionToPointer(displayChars, i, 3), line, 3);
   }
   char line[4] = "┻";
-  void *displayCharsPnt = displayChars + 3 * DISPLAY_WIDTH * 3 + 27;
-  memcpy(displayCharsPnt, line, 3);
-  displayCharsPnt = displayChars + 3 * DISPLAY_WIDTH * 3 + 64;
-  memcpy(displayCharsPnt, line, 3);
+  memcpy(positionToPointer(displayChars, 27, 3), line, 3);
+  memcpy(positionToPointer(displayChars, 67, 3), line, 3);
 }
 
 void sendDisplay(char displayChars[DISPLAY_LENGTH]){
@@ -207,6 +214,7 @@ void sendDisplay(char displayChars[DISPLAY_LENGTH]){
     }else{
       initializeClient(*clients[i]);
       clients[i] -> print(displayChars);
+       //Serial.println(sizeof(displayChars));
       //Serial.print(displayChars);
     }
   }
