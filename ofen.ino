@@ -83,6 +83,9 @@ void display(){
   sprintf(appendString, "%d", temperature);
 
   appendText(displayChars, "12:34:56h1105oC/1255oC1496W");
+
+  drawCoordinateSystem(displayChars);
+
   finishDisplayChars(displayChars);
   sendDisplay(displayChars);
 }
@@ -189,20 +192,212 @@ void appendText(char displayChars[DISPLAY_LENGTH], char *text){
   }
 }
 
+struct line{
+  int start_x;
+  int start_y;
+  int len;
+  unsigned int direction : 1; //0 means x, 1 means y
+};
+
 void drawSeparationLines(char displayChars[DISPLAY_LENGTH]){
-  for(int i = 0; i < 3; i++){
-    char line[4] = "┃";
-    memcpy(positionToPointer(displayChars, 27, i), line, 3);
-    memcpy(positionToPointer(displayChars, 67, i), line, 3);
+  struct line lines[] = {
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = 4,                  .len = 12,                 .direction = 0},
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = 6,                  .len = 12,                 .direction = 0},
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = DISPLAY_HEIGHT - 1, .len = 12,                 .direction = 0},
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = 4,                  .len = DISPLAY_HEIGHT - 4, .direction = 1},
+    { .start_x = DISPLAY_WIDTH - 6,  .start_y = 4,                  .len = DISPLAY_HEIGHT - 4, .direction = 1},
+    { .start_x = DISPLAY_WIDTH - 1,  .start_y = 4,                  .len = DISPLAY_HEIGHT - 4, .direction = 1},
+    { .start_x = 0,                  .start_y = 3,                  .len = DISPLAY_WIDTH,      .direction = 0},
+    { .start_x = 27,                 .start_y = 0,                  .len = 4,                  .direction = 1},
+    { .start_x = 67,                 .start_y = 0,                  .len = 4,                  .direction = 1}
+  };
+
+  int lines_len = sizeof(lines) / sizeof(line);
+
+  for (size_t i = 0; i < lines_len; i++) {
+    int end_x_i = lines[i].start_x + (lines[i].len - 1) * (1 - lines[i].direction);
+    int end_y_i = lines[i].start_y + (lines[i].len - 1) * lines[i].direction;
+
+    for (size_t j = 0; j < lines[i].len; j++) {
+      int current_x_pos = lines[i].start_x + (1 - lines[i].direction) * j;
+      int current_y_pos = lines[i].start_y + lines[i].direction * j;
+
+      char *str = (char*)calloc(4, sizeof(char));
+      str[0] = '\0';
+
+      for (size_t k = 0; k < lines_len; k++) {
+        // we dont care about: the same line, parallel lines, lines which arent crossed
+        if(k == i){
+          k++;
+        }
+        if((lines[k].direction != lines[i].direction) && //checks if lines arent parallel
+          (((current_x_pos == lines[k].start_x) && !lines[i].direction) || ((current_y_pos == lines[k].start_y) && lines[i].direction)) && // check if the current pos is a intersection with the current line
+          (current_x_pos >= lines[k].start_x && current_x_pos <= lines[k].start_x + lines[k].len && current_y_pos >= lines[k].start_y && current_y_pos <= lines[k].start_y + lines[k].len)){ // check if the intersection lays within the start and end of the current line
+
+          int end_x_k = lines[k].start_x + (lines[k].len - 1) * (1 - lines[k].direction);
+          int end_y_k = lines[k].start_y + (lines[k].len - 1) * lines[k].direction;
+
+          strncpy(str, "╋", 4);
+
+          if(current_x_pos == lines[i].start_x && current_y_pos == lines[i].start_y){
+            if(lines[i].direction){ // y
+              strncpy(str, "┳", 4);
+            }else{ // x
+              strncpy(str, "┣", 4);
+            }
+          }
+          if(current_x_pos == lines[k].start_x && current_y_pos == lines[k].start_y){
+            if(lines[k].direction){ // y
+              strncpy(str, "┳", 4);
+            }else{ // x
+              strncpy(str, "┣", 4);
+            }
+          }
+          if(current_x_pos == end_x_i && current_y_pos == end_y_i){
+            if(lines[i].direction){ // y
+              strncpy(str, "┻", 4);
+            }else{ // x
+              strncpy(str, "┫", 4);
+            }
+          }
+          if(current_x_pos == end_x_k && current_y_pos == end_y_k){
+            if(lines[k].direction){ // y
+              strncpy(str, "┻", 4);
+            }else{ // x
+              strncpy(str, "┫", 4);
+            }
+          }
+
+          if(current_x_pos == lines[i].start_x && current_y_pos == lines[i].start_y && current_x_pos == lines[k].start_x && current_y_pos == lines[k].start_y){
+            strncpy(str, "┏", 4);
+          }
+          if(current_x_pos == lines[i].start_x && current_y_pos == lines[i].start_y && current_x_pos == end_x_k && current_y_pos == end_y_k){
+            if(lines[k].direction){ // y
+              strncpy(str, "┗", 4);
+            }else{ // x
+              strncpy(str, "┓", 4);
+            }          }
+          if(current_x_pos == end_x_i && current_y_pos == end_y_i && current_x_pos == lines[k].start_x && current_y_pos == lines[k].start_y){
+            if(lines[k].direction){ // y
+              strncpy(str, "┓", 4);
+            }else{ // x
+              strncpy(str, "┗", 4);
+            }          }
+          if(current_x_pos == end_x_i && current_y_pos == end_y_i && current_x_pos == end_x_k && current_y_pos == end_y_k){
+            strncpy(str, "┛", 4);
+          }
+        }
+      }
+
+      if(str[0] == '\0'){
+        if(lines[i].direction){
+          strncpy(str, "┃", 4);
+        }else{
+          strncpy(str, "━", 4);
+        }
+      }
+
+      memcpy(positionToPointer(displayChars, current_x_pos, current_y_pos), str, 3);
+      free(str);
+    }
+
   }
-  for(int i = 0; i < DISPLAY_WIDTH; i++){
-    char line[4] = "━";
-    memcpy(positionToPointer(displayChars, i, 3), line, 3);
-  }
-  char line[4] = "┻";
-  memcpy(positionToPointer(displayChars, 27, 3), line, 3);
-  memcpy(positionToPointer(displayChars, 67, 3), line, 3);
+
+  // for(int i = 0; i < 3; i++){
+  //   char str[4] = "┃";
+  //   memcpy(positionToPointer(displayChars, 27, i), str, 3);
+  //   memcpy(positionToPointer(displayChars, 67, i), str, 3);
+  // }
+  // for(int i = 0; i < DISPLAY_WIDTH; i++){
+  //   char str[4] = "━";
+  //   memcpy(positionToPointer(displayChars, i, 3), str, 3);
+  // }
+  // char str[4] = "┻";
+  // memcpy(positionToPointer(displayChars, 27, 3), str, 3);
+  // memcpy(positionToPointer(displayChars, 67, 3), str, 3);
 }
+
+int getDigitCount(int num){
+  if(num < 10){
+    return 1;
+  }else{
+    return getDigitCount(num / 10) + 1;
+  }
+}
+
+void addIntToDisplay(char displayChars[DISPLAY_LENGTH], int x, int y, int num){
+  int numLen = getDigitCount(num);
+  char numString[numLen * 3 + 1] = {};
+  for (size_t i = 0; i < numLen * 2; i++) {
+    numString[i] = '\u001A';
+  }
+  sprintf(&numString[numLen * 2], "%d", (int)num);
+  memcpy(positionToPointer(displayChars, x - numLen + 1, y), numString, numLen * 3);
+}
+
+#define SETPOINTS_COUNT 100
+#define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
+#define TEMP_AXIS_LENGTH (DISPLAY_HEIGHT - 4 - 1)
+#define TEMP_AXIS_ANNOTATION_DISTANCE 3
+
+void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH]){
+  int setpoints[100][2] = {
+    {0, 0},
+    {20, 100},
+    {60, 800},
+    {90, 800},
+    {100, 600},
+    {180, 1000},
+    {200, 0}
+  };
+
+  for(int i = 5; i < 18; i++){
+    char str[4] = "┃";
+    memcpy(positionToPointer(displayChars, 4, i), str, 3);
+  }
+  for(int i = 5; i < 5 + TIME_AXIS_LENGTH; i++){
+    char str[4] = "━";
+    memcpy(positionToPointer(displayChars, i, DISPLAY_HEIGHT - 2), str, 3);
+  }
+  char *str = "T\u001A\u001A/\u001A\u001A°\u001AC\u001A\u001A^\u001A\u001A";
+  memcpy(positionToPointer(displayChars, 0, 4), str, 5 * 3);
+  str = ">\u001A\u001A";
+  memcpy(positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH, DISPLAY_HEIGHT - 2), str, 3);
+  str = "t\u001A\u001A/\u001A\u001Ah\u001A\u001A";
+  memcpy(positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH - 2, DISPLAY_HEIGHT - 1), str, 3 * 3);
+  str = "╋";
+  memcpy(positionToPointer(displayChars, 4, DISPLAY_HEIGHT - 2), str, 3);
+  str = "0\u001A\u001A";
+  memcpy(positionToPointer(displayChars, 3, DISPLAY_HEIGHT - 1), str, 3);
+
+  int maxTime = 0;
+  int maxTemp = 0;
+
+  for (int i = 0; i < SETPOINTS_COUNT; i++) {
+    if(setpoints[i][0] > maxTime){
+      maxTime = setpoints[i][0];
+    }
+    if(setpoints[i][1] > maxTemp){
+      maxTemp = setpoints[i][1];
+    }
+  }
+
+  for (int i = 2; i < TEMP_AXIS_LENGTH - 1; i += 2) {
+    int tempVal = maxTemp * i / (TEMP_AXIS_LENGTH - 1);
+    addIntToDisplay(displayChars, 3, 18 - i, tempVal);
+    str = "╋";
+    memcpy(positionToPointer(displayChars, 4, 18 - i), str, 3);
+  }
+
+  for (int i = 10; i < TIME_AXIS_LENGTH - 1; i += 10) {
+    int timeVal = maxTime * i / (TIME_AXIS_LENGTH - 1);
+    addIntToDisplay(displayChars, 4 + i, 19, timeVal);
+    str = "╋";
+    memcpy(positionToPointer(displayChars, 4 + i, 18), str, 3);
+  }
+}
+
+
 
 void sendDisplay(char displayChars[DISPLAY_LENGTH]){
   for (int i=0 ; i<MAX_CLIENTS ; i++) {
@@ -328,5 +523,5 @@ void loop() {
   initializeDisplayChars(displayChars);
   displayChars[0] = 'a';
   sendDisplay(displayChars);*/
-  delay(100);
+  delay(500);
 }
