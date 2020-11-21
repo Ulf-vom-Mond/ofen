@@ -15,7 +15,13 @@
 #define ADC_SPEED_READING ADC1_GPIO34_CHANNEL
 #define ADC_SPEED_REFERENCE ADC1_GPIO35_CHANNEL
 #define POINT_50 400
-#define ADJUST_temperature_THRESHHOLD 50
+#define ADJUST_TEMPERATURE_THRESHHOLD 50
+
+#define SETPOINTS_COUNT 12
+#define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
+#define TEMP_AXIS_LENGTH (DISPLAY_HEIGHT - 4 - 1)
+#define ORIGIN_X 4
+#define ORIGIN_Y DISPLAY_HEIGHT - 2
 
 WiFiClient *clients[MAX_CLIENTS] = { NULL };
 
@@ -39,10 +45,10 @@ void IRAM_ATTR coilBReset();
 
 int adjusttemperature(){
   int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
-  if(speed < ADJUST_temperature_THRESHHOLD){
+  if(speed < ADJUST_TEMPERATURE_THRESHHOLD){
     return 1;
   }
-  return pow(((double)speed - ADJUST_temperature_THRESHHOLD) / (POINT_50 - ADJUST_temperature_THRESHHOLD), 2) * 49 + 1;
+  return pow(((double)speed - ADJUST_TEMPERATURE_THRESHHOLD) / (POINT_50 - ADJUST_TEMPERATURE_THRESHHOLD), 2) * 49 + 1;
 }
 
 void IRAM_ATTR coilA(){
@@ -84,7 +90,8 @@ void display(){
 
   appendText(displayChars, "12:34:56h1105oC/1255oC1496W");
 
-  drawCoordinateSystem(displayChars);
+  drawDiagram(displayChars);
+  fillTable(displayChars);
 
   finishDisplayChars(displayChars);
   sendDisplay(displayChars);
@@ -201,15 +208,17 @@ struct line{
 
 void drawSeparationLines(char displayChars[DISPLAY_LENGTH]){
   struct line lines[] = {
-    { .start_x = DISPLAY_WIDTH - 12, .start_y = 4,                  .len = 12,                 .direction = 0},
-    { .start_x = DISPLAY_WIDTH - 12, .start_y = 6,                  .len = 12,                 .direction = 0},
-    { .start_x = DISPLAY_WIDTH - 12, .start_y = DISPLAY_HEIGHT - 1, .len = 12,                 .direction = 0},
-    { .start_x = DISPLAY_WIDTH - 12, .start_y = 4,                  .len = DISPLAY_HEIGHT - 4, .direction = 1},
-    { .start_x = DISPLAY_WIDTH - 6,  .start_y = 4,                  .len = DISPLAY_HEIGHT - 4, .direction = 1},
-    { .start_x = DISPLAY_WIDTH - 1,  .start_y = 4,                  .len = DISPLAY_HEIGHT - 4, .direction = 1},
-    { .start_x = 0,                  .start_y = 3,                  .len = DISPLAY_WIDTH,      .direction = 0},
-    { .start_x = 27,                 .start_y = 0,                  .len = 4,                  .direction = 1},
-    { .start_x = 67,                 .start_y = 0,                  .len = 4,                  .direction = 1}
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = 4,                               .len = 12,                 .direction = 0},
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = 6,                               .len = 12,                 .direction = 0},
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = DISPLAY_HEIGHT - 1,              .len = 12,                 .direction = 0},
+    { .start_x = DISPLAY_WIDTH - 12, .start_y = 4,                               .len = DISPLAY_HEIGHT - 4, .direction = 1},
+    { .start_x = DISPLAY_WIDTH - 6,  .start_y = 4,                               .len = DISPLAY_HEIGHT - 4, .direction = 1},
+    { .start_x = DISPLAY_WIDTH - 1,  .start_y = 4,                               .len = DISPLAY_HEIGHT - 4, .direction = 1},
+    { .start_x = 0,                  .start_y = 3,                               .len = DISPLAY_WIDTH,      .direction = 0},
+    { .start_x = 27,                 .start_y = 0,                               .len = 4,                  .direction = 1},
+    { .start_x = 67,                 .start_y = 0,                               .len = 4,                  .direction = 1},
+    { .start_x = ORIGIN_X,           .start_y = ORIGIN_Y - TEMP_AXIS_LENGTH + 1, .len = TEMP_AXIS_LENGTH,   .direction = 1},
+    { .start_x = ORIGIN_X,           .start_y = ORIGIN_Y,                        .len = TIME_AXIS_LENGTH,   .direction = 0}
   };
 
   int lines_len = sizeof(lines) / sizeof(line);
@@ -302,19 +311,6 @@ void drawSeparationLines(char displayChars[DISPLAY_LENGTH]){
     }
 
   }
-
-  // for(int i = 0; i < 3; i++){
-  //   char str[4] = "┃";
-  //   memcpy(positionToPointer(displayChars, 27, i), str, 3);
-  //   memcpy(positionToPointer(displayChars, 67, i), str, 3);
-  // }
-  // for(int i = 0; i < DISPLAY_WIDTH; i++){
-  //   char str[4] = "━";
-  //   memcpy(positionToPointer(displayChars, i, 3), str, 3);
-  // }
-  // char str[4] = "┻";
-  // memcpy(positionToPointer(displayChars, 27, 3), str, 3);
-  // memcpy(positionToPointer(displayChars, 67, 3), str, 3);
 }
 
 int getDigitCount(int num){
@@ -335,69 +331,119 @@ void addIntToDisplay(char displayChars[DISPLAY_LENGTH], int x, int y, int num){
   memcpy(positionToPointer(displayChars, x - numLen + 1, y), numString, numLen * 3);
 }
 
-#define SETPOINTS_COUNT 100
-#define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
-#define TEMP_AXIS_LENGTH (DISPLAY_HEIGHT - 4 - 1)
-#define TEMP_AXIS_ANNOTATION_DISTANCE 3
+void formatTime(char *dest, int minutes){
+  int hours = (minutes - minutes % 60) / 60;
+  minutes = minutes % 60;
 
-void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH]){
-  int setpoints[100][2] = {
-    {0, 0},
-    {20, 100},
-    {60, 800},
-    {90, 800},
-    {100, 600},
-    {180, 1000},
-    {200, 0}
-  };
-
-  for(int i = 5; i < 18; i++){
-    char str[4] = "┃";
-    memcpy(positionToPointer(displayChars, 4, i), str, 3);
+  size_t i;
+  for (i = 0; i < 2 - getDigitCount(hours); i++) {
+    strncpy(dest + i, "0", 1);
   }
-  for(int i = 5; i < 5 + TIME_AXIS_LENGTH; i++){
-    char str[4] = "━";
-    memcpy(positionToPointer(displayChars, i, DISPLAY_HEIGHT - 2), str, 3);
+  sprintf(dest + i, "%d", hours);
+  strncpy(dest + 2, ":", 1);
+  for (i = 0; i < 2 - getDigitCount(minutes); i++) {
+    strncpy(dest + 3 + i, "0", 1);
   }
-  char *str = "T\u001A\u001A/\u001A\u001A°\u001AC\u001A\u001A^\u001A\u001A";
-  memcpy(positionToPointer(displayChars, 0, 4), str, 5 * 3);
-  str = ">\u001A\u001A";
-  memcpy(positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH, DISPLAY_HEIGHT - 2), str, 3);
-  str = "t\u001A\u001A/\u001A\u001Ah\u001A\u001A";
-  memcpy(positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH - 2, DISPLAY_HEIGHT - 1), str, 3 * 3);
-  str = "╋";
-  memcpy(positionToPointer(displayChars, 4, DISPLAY_HEIGHT - 2), str, 3);
-  str = "0\u001A\u001A";
-  memcpy(positionToPointer(displayChars, 3, DISPLAY_HEIGHT - 1), str, 3);
+  sprintf(dest + 3 + i, "%d", minutes);
+  strncpy(dest + 5, "\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A", 10);
+}
 
+int setpoints[SETPOINTS_COUNT][2] = {
+  {0, 0},
+  {20, 100},
+  {60, 800},
+  {90, 800},
+  {100, 600},
+  {180, 1000},
+  {200, 0}
+};
+
+void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
+  strncpy((char*)positionToPointer(displayChars, 0, 4), "T\u001A\u001A/\u001A\u001A°\u001AC\u001A\u001A^\u001A\u001A", 5 * 3);
+  strncpy((char*)positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH, DISPLAY_HEIGHT - 2), ">\u001A\u001A", 3);
+  strncpy((char*)positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH - 2, DISPLAY_HEIGHT - 1), "t\u001A\u001A/\u001A\u001Ah\u001A\u001A", 3 * 3);
+  strncpy((char*)positionToPointer(displayChars, ORIGIN_X, ORIGIN_Y), "╋", 3);
+  strncpy((char*)positionToPointer(displayChars, ORIGIN_X - 1, ORIGIN_Y + 1), "0\u001A\u001A", 3);
+
+  for (int i = 2; i < TEMP_AXIS_LENGTH - 1; i += 2) {
+    int tempVal = maxTemp * i / (TEMP_AXIS_LENGTH - 1);
+    addIntToDisplay(displayChars, 3, 18 - i, tempVal);
+    strncpy((char*)positionToPointer(displayChars, 4, 18 - i), "╋", 3);
+  }
+
+  for (int i = 10; i < TIME_AXIS_LENGTH - 1; i += 10) {
+    int timeVal = maxTime * i / (TIME_AXIS_LENGTH - 1);
+    formatTime((char*)positionToPointer(displayChars, 2 + i, 19), timeVal);
+    strncpy((char*)positionToPointer(displayChars, 4 + i, 18), "╋", 3);
+  }
+}
+
+void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
+  for (int i = 0; i < TIME_AXIS_LENGTH - 1; i++) {
+    int lastSetpoint = 0;
+    int currentTime = i * maxTime / (TIME_AXIS_LENGTH - 1);
+    while(setpoints[lastSetpoint + 1][0] < currentTime && lastSetpoint < SETPOINTS_COUNT - 1) {
+      lastSetpoint++;
+    }
+    if(setpoints[lastSetpoint + 1][0] != setpoints[lastSetpoint][0]){
+      float slope = (setpoints[lastSetpoint + 1][1] - setpoints[lastSetpoint][1]) / (setpoints[lastSetpoint + 1][0] - setpoints[lastSetpoint][0]);
+      float temp = ((currentTime - setpoints[lastSetpoint][0]) * slope + setpoints[lastSetpoint][1]);
+      float scaledTemp = temp * (TEMP_AXIS_LENGTH - 1) / maxTemp;
+      float scaledTempDecimals = scaledTemp - (int)scaledTemp;
+      Serial.print(scaledTemp);
+      Serial.print(", ");
+      Serial.print((int)scaledTemp);
+      Serial.print(", ");
+      Serial.print(scaledTempDecimals);
+      Serial.print(", ");
+      if(scaledTempDecimals < 0.33){
+        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), ".\u001A\u001A", 3);
+        Serial.println("down");
+      }else if(scaledTempDecimals >= 0.67){
+        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "'\u001A\u001A", 3);
+        Serial.println("up");
+      }else{
+        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "·\u001A", 3);
+        Serial.println("middle");
+      }
+    }
+  }
+
+}
+
+void drawDiagram(char displayChars[DISPLAY_LENGTH]){
   int maxTime = 0;
   int maxTemp = 0;
 
   for (int i = 0; i < SETPOINTS_COUNT; i++) {
-    if(setpoints[i][0] > maxTime){
-      maxTime = setpoints[i][0];
-    }
     if(setpoints[i][1] > maxTemp){
       maxTemp = setpoints[i][1];
     }
   }
 
-  for (int i = 2; i < TEMP_AXIS_LENGTH - 1; i += 2) {
-    int tempVal = maxTemp * i / (TEMP_AXIS_LENGTH - 1);
-    addIntToDisplay(displayChars, 3, 18 - i, tempVal);
-    str = "╋";
-    memcpy(positionToPointer(displayChars, 4, 18 - i), str, 3);
+  for (int i = SETPOINTS_COUNT - 1; i >= 0; i--) {
+    if(setpoints[i][0] != 0){
+      maxTime = setpoints[i][0];
+      break;
+    }
   }
 
-  for (int i = 10; i < TIME_AXIS_LENGTH - 1; i += 10) {
-    int timeVal = maxTime * i / (TIME_AXIS_LENGTH - 1);
-    addIntToDisplay(displayChars, 4 + i, 19, timeVal);
-    str = "╋";
-    memcpy(positionToPointer(displayChars, 4 + i, 18), str, 3);
-  }
+  drawCoordinateSystem(displayChars, maxTime, maxTemp);
+  drawGraph(displayChars, maxTime, maxTemp);
 }
 
+void fillTable(char displayChars[DISPLAY_LENGTH]){
+  strncpy((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 10, 5), "t/h\u001A\u001A\u001A\u001A\u001A\u001A", 3*3);
+  strncpy((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 5, 5), "T/°C\u001A\u001A\u001A\u001A\u001A\u001A\u001A", 4*3);
 
+  for (size_t i = 0; i < SETPOINTS_COUNT; i++) {
+    if(setpoints[i][0] == 0 && i != 0){
+      break;
+    }
+    formatTime((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
+    addIntToDisplay(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
+  }
+}
 
 void sendDisplay(char displayChars[DISPLAY_LENGTH]){
   for (int i=0 ; i<MAX_CLIENTS ; i++) {
