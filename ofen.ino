@@ -8,7 +8,7 @@
 
 #define DISPLAY_WIDTH 84
 #define DISPLAY_HEIGHT 20
-#define DISPLAY_LENGTH (DISPLAY_WIDTH * DISPLAY_HEIGHT * 3) + DISPLAY_HEIGHT
+#define DISPLAY_LENGTH (DISPLAY_WIDTH * DISPLAY_HEIGHT * 3) + 1
 
 #define GPIO_COIL_A 22
 #define GPIO_COIL_B 23
@@ -17,11 +17,17 @@
 #define POINT_50 400
 #define ADJUST_TEMPERATURE_THRESHHOLD 50
 
+#define GPIO_LEFT   25
+#define GPIO_MIDDLE 26
+#define GPIO_RIGHT  27
+
 #define SETPOINTS_COUNT 12
 #define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
 #define TEMP_AXIS_LENGTH (DISPLAY_HEIGHT - 4 - 1)
 #define ORIGIN_X 4
 #define ORIGIN_Y DISPLAY_HEIGHT - 2
+
+#define LONG_PRESS 300
 
 WiFiClient *clients[MAX_CLIENTS] = { NULL };
 
@@ -32,18 +38,47 @@ WiFiServer server(80);
 
 int rotary = 0;
 
-int temperature = 0;
+int selected_field = 0;
+
+unsigned long lastMiddlePress = millis();
+
+int setpoints[SETPOINTS_COUNT][2] = {
+  {0,   0},
+  {20,  100},
+  {60,  800},
+  {90,  800},
+  {100, 600},
+  {180, 1000},
+  {200, 0},
+  {-1, -1},
+  {-1, -1},
+  {-1, -1},
+  {-1, -1},
+  {-1, -1}
+};
+
+char staticDisplay[DISPLAY_LENGTH] = {};
 
 struct Color{
-  unsigned char red;
-  unsigned char green;
-  unsigned char blue;
+  unsigned char redFg;
+  unsigned char greenFg;
+  unsigned char blueFg;
+  unsigned char redBg;
+  unsigned char greenBg;
+  unsigned char blueBg;
+};
+
+struct uint_displayLength {
+  unsigned int bits:DISPLAY_WIDTH * DISPLAY_HEIGHT;
 };
 
 void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
 
-int adjusttemperature(){
+void IRAM_ATTR middle_down();
+void IRAM_ATTR middle_up();
+
+int adjustRotaryValue(){
   int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
   if(speed < ADJUST_TEMPERATURE_THRESHHOLD){
     return 1;
@@ -55,7 +90,7 @@ void IRAM_ATTR coilA(){
   if(rotary == 0){
     rotary += 1;
   }else{
-    temperature += adjusttemperature();
+    setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustRotaryValue();
   }
   attachInterrupt(GPIO_COIL_A, coilAReset, FALLING);
 }
@@ -64,7 +99,7 @@ void IRAM_ATTR coilB(){
   if(rotary == 0){
     rotary += 1;
   }else{
-    temperature -= adjusttemperature();
+    setpoints[(int)(selected_field / 2)][selected_field % 2] -= adjustRotaryValue();
   }
   attachInterrupt(GPIO_COIL_B, coilBReset, FALLING);
 }
@@ -79,114 +114,71 @@ void IRAM_ATTR coilBReset(){
   attachInterrupt(GPIO_COIL_B, coilB, RISING);
 }
 
-void display(){
-  char displayChars[DISPLAY_LENGTH] = {};
-  initializeDisplayChars(displayChars);
-  struct Color displayForegroundInvColor[DISPLAY_WIDTH * DISPLAY_HEIGHT] = {};
-  struct Color displayBackgroundColor[DISPLAY_WIDTH * DISPLAY_HEIGHT] = {};
-  drawSeparationLines(displayChars);
-  char appendString[10] = {};
-  sprintf(appendString, "%d", temperature);
-
-  appendText(displayChars, "12:34:56h1105oC/1255oC1496W");
-
-  drawDiagram(displayChars);
-  fillTable(displayChars);
-
-  finishDisplayChars(displayChars);
-  sendDisplay(displayChars);
-}
-
-void * positionToPointer(char *displayChars, int x, int y){
-  return displayChars + y * (DISPLAY_WIDTH * 3 + 1) + x * 3;
-}
-
-void initializeDisplayChars(char displayChars[DISPLAY_LENGTH]){
-  for(int i = DISPLAY_WIDTH * 3; i < DISPLAY_LENGTH - 1; i += DISPLAY_WIDTH * 3 + 1){
-    displayChars[i] = '\n';
+void IRAM_ATTR left(){
+  if(selected_field > 0){
+    selected_field--;
   }
 }
 
-void finishDisplayChars(char displayChars[DISPLAY_LENGTH]){
-  int i = 0;
-  while(i < DISPLAY_LENGTH - 3) {
-    if(!displayChars[i]){
-      displayChars[i] = ' ';
-      displayChars[i + 1] = '\u001A';
-      displayChars[i + 2] = '\u001A';
-      // Serial.print("filled in voids at: ");
-      // Serial.print(i);
-      // Serial.print(", ");
-      // Serial.print(i + 1);
-      // Serial.print(" and ");
-      // Serial.println(i + 2);
-      i += 3;
+void IRAM_ATTR middle_down(){
+  lastMiddlePress = millis();
+  attachInterrupt(GPIO_MIDDLE, middle_up, RISING);
+}
+
+void insertSetpoint(int position, int lastMiddlePress, int temp){
+  if(setpoints[position][0] != -1){
+    insertSetpoint(position + 1, setpoints[position][0], setpoints[position][1]);
+  }
+  setpoints[position][0] = lastMiddlePress;
+  setpoints[position][1] = temp;
+}
+
+void deleteSetpoint(int position){
+  if(position + 1 < SETPOINTS_COUNT){
+    if(setpoints[position + 1][0] == -1){
+      setpoints[position][0] = -1;
+      setpoints[position][1] = -1;
     }else{
-      i += 1;
+      setpoints[position][0] = setpoints[position + 1][0];
+      setpoints[position][1] = setpoints[position + 1][1];
+      deleteSetpoint(position + 1);
     }
   }
 }
 
-String getColorCode(int iterator){
-  iterator = iterator%1024;
-
-  int r;
-  int g;
-  int b;
-
-  if(iterator >= 0 && iterator < 256){
-    r = 255;
-    g = iterator - 0;
-    b = 0;
+void IRAM_ATTR middle_up(){
+  if(millis() - lastMiddlePress < LONG_PRESS && setpoints[SETPOINTS_COUNT - 1][0] == -1){
+    int position = (int)(selected_field / 2);
+    insertSetpoint(position, setpoints[position][0], setpoints[position][1]);
   }
-  if(iterator >= 256 && iterator < 512){
-    r = 511 - iterator;
-    g = 255;
-    b = iterator - 256;
-  }
-  if(iterator >= 512 && iterator < 768){
-    r = 0;
-    g = 767 - iterator;
-    b = 255;
-  }
-  if(iterator >= 768 && iterator < 1024){
-    r = iterator - 768;
-    g = 0;
-    b = 1023 - iterator;
-  }
-
-  char output[51] = "\u001b[48;2;";
-  char colorVal[12];
-
-  sprintf(colorVal, "%d", r);
-  strcat(output, colorVal);
-  strcat(output, ";");
-
-  sprintf(colorVal, "%d", g);
-  strcat(output, colorVal);
-  strcat(output, ";");
-
-  sprintf(colorVal, "%d", b);
-  strcat(output, colorVal);
-  strcat(output, "m");
-
-  return output;
+  attachInterrupt(GPIO_MIDDLE, middle_down, FALLING);
 }
 
-void appendText(char displayChars[DISPLAY_LENGTH], char *text){
-  int displayIterator = 0;
-  while(displayChars[displayIterator] && displayIterator < DISPLAY_LENGTH){
-    displayIterator++;
+void IRAM_ATTR right(){
+  if (setpoints[(int)(selected_field / 2 + 0.5)][0] != -1) {
+    selected_field++;
   }
-  int distanceFromLineEnding = DISPLAY_WIDTH * 3 - (displayIterator + 1) % (DISPLAY_WIDTH * 3 + 1);
-  if(distanceFromLineEnding >= 0 && distanceFromLineEnding <= 8){
-    displayIterator += distanceFromLineEnding + 1;
-  }
+}
+
+void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], struct uint_displayLength invertDisplay){
+  appendText(dynamicDisplay, "12:34:56h", 0, 0);
+  appendText(dynamicDisplay, "1105oC/1255oC", 28, 0);
+  appendText(dynamicDisplay, "1496W", 69, 0);
+
+  drawDiagram(dynamicDisplay);
+  fillTable(dynamicDisplay);
+}
+
+void * positionToPointer(char *displayChars, uint8_t x, uint8_t y){
+  return displayChars + y * DISPLAY_WIDTH * 3 + x * 3;
+}
+
+void appendText(char displayChars[DISPLAY_LENGTH], char *text, uint8_t xPos, uint8_t yPos){
+
   char pattern[28];
   memcpy(pattern, letterToPattern(text[0]), 28);
   for(int i = 0; i < 3; i++){
-    int displayCharsPos = displayIterator + i * (DISPLAY_WIDTH * 3 + 1);
-    void *displayCharsPnt = displayChars + displayCharsPos;
+    void *displayCharsPnt = positionToPointer(displayChars, xPos, yPos + i);
 
     int patternPos = i * 9;
     void *patternPnt = pattern + patternPos;
@@ -194,8 +186,8 @@ void appendText(char displayChars[DISPLAY_LENGTH], char *text){
     memcpy(displayCharsPnt, patternPnt, 9);
   }
   int textLen = strlen(text) - 1;
-  if(textLen >= 1){
-    appendText(displayChars, ++text);
+  if(textLen >= 1 && xPos + 3 < DISPLAY_WIDTH){
+    appendText(displayChars, ++text, xPos + 3, yPos);
   }
 }
 
@@ -348,16 +340,6 @@ void formatTime(char *dest, int minutes){
   strncpy(dest + 5, "\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A", 10);
 }
 
-int setpoints[SETPOINTS_COUNT][2] = {
-  {0, 0},
-  {20, 100},
-  {60, 800},
-  {90, 800},
-  {100, 600},
-  {180, 1000},
-  {200, 0}
-};
-
 void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
   strncpy((char*)positionToPointer(displayChars, 0, 4), "T\u001A\u001A/\u001A\u001A°\u001AC\u001A\u001A^\u001A\u001A", 5 * 3);
   strncpy((char*)positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH, DISPLAY_HEIGHT - 2), ">\u001A\u001A", 3);
@@ -390,21 +372,12 @@ void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
       float temp = ((currentTime - setpoints[lastSetpoint][0]) * slope + setpoints[lastSetpoint][1]);
       float scaledTemp = temp * (TEMP_AXIS_LENGTH - 1) / maxTemp;
       float scaledTempDecimals = scaledTemp - (int)scaledTemp;
-      Serial.print(scaledTemp);
-      Serial.print(", ");
-      Serial.print((int)scaledTemp);
-      Serial.print(", ");
-      Serial.print(scaledTempDecimals);
-      Serial.print(", ");
       if(scaledTempDecimals < 0.33){
         strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), ".\u001A\u001A", 3);
-        Serial.println("down");
       }else if(scaledTempDecimals >= 0.67){
         strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "'\u001A\u001A", 3);
-        Serial.println("up");
       }else{
         strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "·\u001A", 3);
-        Serial.println("middle");
       }
     }
   }
@@ -445,7 +418,7 @@ void fillTable(char displayChars[DISPLAY_LENGTH]){
   }
 }
 
-void sendDisplay(char displayChars[DISPLAY_LENGTH]){
+void sendDisplay(char *displayChars){
   for (int i=0 ; i<MAX_CLIENTS ; i++) {
     if (clients[i] == NULL) {
       break;
@@ -455,8 +428,6 @@ void sendDisplay(char displayChars[DISPLAY_LENGTH]){
     }else{
       initializeClient(*clients[i]);
       clients[i] -> print(displayChars);
-       //Serial.println(sizeof(displayChars));
-      //Serial.print(displayChars);
     }
   }
 }
@@ -526,6 +497,82 @@ char* letterToPattern(char letter){ //x, y and 3 chars for unicode
   return pattern;
 }
 
+void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
+  drawSeparationLines(staticDisplay);
+}
+
+void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISPLAY_LENGTH], struct uint_displayLength invertDisplay){
+  char invert[] = "\u001b[7m";
+  char reset[] = "\u001b[27m";
+
+  int invertedRegionCounter = 0;                                 // checking how large the
+  uint8_t lastBit = 0;                                           // final displayChars array
+  for (size_t i = 0; i < sizeof(uint_displayLength) * 8; i++) {  // has to be to contain the
+    uint8_t currentBit = (invertDisplay.bits >> i) & 0x01;       // invert/reset video commands
+    if(currentBit == 1 && lastBit == 0){
+      invertedRegionCounter++;
+    }
+    lastBit = currentBit;
+  }
+
+  int displayCharsLength = DISPLAY_LENGTH + DISPLAY_HEIGHT - 1 + invertedRegionCounter * (sizeof(invert) + sizeof(reset));
+  char *displayChars = (char*)malloc(displayCharsLength);
+  memset(displayChars, '\0', displayCharsLength);
+  int displayCharIterator = 0;                                   // merging staticDisplay and dynamicDisplay
+  lastBit = 0;                                                   // and inserting the invert/reset video commands
+  for (size_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
+    // Serial.println(displayCharIterator);
+    if(i % DISPLAY_WIDTH == 0){
+      strcpy(displayChars + displayCharIterator, "\n");
+      Serial.print("newline: ");
+      Serial.println(i);
+      displayCharIterator++;
+    }
+
+    uint8_t currentBit = (invertDisplay.bits >> i) & 0x01;
+    if(currentBit == 1 && lastBit == 0){
+      strcpy(displayChars + displayCharIterator, invert);
+      Serial.print("invert: ");
+      Serial.println(i);
+      displayCharIterator += sizeof(invert);
+    }
+    if(currentBit == 0 && lastBit == 1){
+      strcpy(displayChars + displayCharIterator, reset);
+      Serial.print("reset: ");
+      Serial.println(i);
+      displayCharIterator += sizeof(reset);
+    }
+    lastBit = currentBit;
+
+    if (dynamicDisplay[3 * i] != '\0') {
+      strncpy(displayChars + displayCharIterator, dynamicDisplay + i * 3, 3);
+      // Serial.println("static");
+    } else if (staticDisplay[3 * i] != '\0') {
+      strncpy(displayChars + displayCharIterator, staticDisplay + i * 3, 3);
+      // Serial.println("dynamic");
+    } else {
+      strcpy(displayChars + displayCharIterator, " ");
+       Serial.println("space");
+    }
+    while(*(displayChars + displayCharIterator) != '\0'){
+      displayCharIterator++;
+      //Serial.println("advance");
+    }
+
+  }
+  Serial.println("----------------------------------------------");
+  for (size_t i = 0; i < displayCharsLength; i++) {
+    break;
+    if(*(displayChars + i) == '\0'){
+      Serial.println(i);
+    }
+  }
+
+  sendDisplay(displayChars);
+
+  free(displayChars);
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -533,6 +580,13 @@ void setup() {
   pinMode(GPIO_COIL_B, INPUT);
   attachInterrupt(GPIO_COIL_A, coilA, RISING);
   attachInterrupt(GPIO_COIL_B, coilB, RISING);
+
+  pinMode(GPIO_LEFT,   INPUT_PULLUP);
+  pinMode(GPIO_MIDDLE, INPUT_PULLUP);
+  pinMode(GPIO_RIGHT,  INPUT_PULLUP);
+  attachInterrupt(GPIO_LEFT,   left,   FALLING);
+  attachInterrupt(GPIO_MIDDLE, middle_down, FALLING);
+  attachInterrupt(GPIO_RIGHT,  right,  FALLING);
 
   adc1_config_width(ADC_WIDTH_BIT_12);
   adc1_config_channel_atten(ADC_SPEED_READING, ADC_ATTEN_DB_11);
@@ -549,9 +603,11 @@ void setup() {
   server.begin();
 
   Serial.println("Server started");
+
+  generateStaticDisplay(staticDisplay);
 }
 
-void loop() {
+void loop(){
   WiFiClient newClient = server.available();   // listen for incoming clients
 
   if(newClient){
@@ -563,11 +619,17 @@ void loop() {
       }
     }
   }
-  display();
 
-  /*char displayChars[DISPLAY_LENGTH] = {};
-  initializeDisplayChars(displayChars);
-  displayChars[0] = 'a';
-  sendDisplay(displayChars);*/
-  delay(500);
-}
+  char dynamicDisplay[DISPLAY_LENGTH] = {};
+  struct uint_displayLength invertDisplay;
+  invertDisplay.bits = 0;
+  generateDynamicDisplay(dynamicDisplay, invertDisplay);
+  processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
+
+  delay(100);
+
+  return;
+  if(digitalRead(GPIO_MIDDLE == LOW && millis() - lastMiddlePress > LONG_PRESS)){
+    deleteSetpoint((int)(selected_field / 2));
+  }
+};
