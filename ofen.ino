@@ -167,6 +167,9 @@ void IRAM_ATTR middle_up(){
     int position = (int)(selected_field / 2);
     insertSetpoint(position, setpoints[position][0], setpoints[position][1]);
   }
+  if(millis() - lastMiddlePress > LONG_PRESS && setpoints[2][0] != -1) {
+    deleteSetpoint((int)(selected_field / 2));
+  }
   attachInterrupt(GPIO_MIDDLE, middle_down, FALLING);
 }
 
@@ -380,7 +383,6 @@ void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int ma
 }
 
 void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
-  Serial.println(maxTime);
   for (int i = 0; i < TIME_AXIS_LENGTH - 1; i++) {
     int lastSetpoint = 0;
     int currentTime = i * maxTime / (TIME_AXIS_LENGTH - 1);
@@ -653,10 +655,10 @@ void loop(){
   generateDynamicDisplay(dynamicDisplay, invertDisplay);
   processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
 
-  delay(100);
+  //if(digitalRead(GPIO_MIDDLE) == LOW && millis() - lastMiddlePress > LONG_PRESS){
+    //Serial.println("long press");
+    //deleteSetpoint((int)(selected_field / 2));
+  //}
 
-  return;
-  if(digitalRead(GPIO_MIDDLE == LOW && millis() - lastMiddlePress > LONG_PRESS)){
-    deleteSetpoint((int)(selected_field / 2));
-  }
-};
+  delay(100);
+}
