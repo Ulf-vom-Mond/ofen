@@ -655,10 +655,5 @@ void loop(){
   generateDynamicDisplay(dynamicDisplay, invertDisplay);
   processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
 
-  //if(digitalRead(GPIO_MIDDLE) == LOW && millis() - lastMiddlePress > LONG_PRESS){
-    //Serial.println("long press");
-    //deleteSetpoint((int)(selected_field / 2));
-  //}
-
   delay(100);
 }
