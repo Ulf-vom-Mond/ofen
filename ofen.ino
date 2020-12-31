@@ -160,17 +160,20 @@ void IRAM_ATTR right(){
   }
 }
 
-void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], struct uint_displayLength invertDisplay){
-  appendText(dynamicDisplay, "12:34:56h", 0, 0);
-  appendText(dynamicDisplay, "1105oC/1255oC", 28, 0);
-  appendText(dynamicDisplay, "1496W", 69, 0);
-
-  drawDiagram(dynamicDisplay);
-  fillTable(dynamicDisplay);
+int positionToInt(uint8_t x, uint8_t y){
+  return y * DISPLAY_WIDTH * 3 + x * 3;
 }
 
 void * positionToPointer(char *displayChars, uint8_t x, uint8_t y){
-  return displayChars + y * DISPLAY_WIDTH * 3 + x * 3;
+  return displayChars + positionToInt(x, y);
+}
+
+uint8_t getBit(unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8], int pos){
+  return (uint8_t)(*(invertDisplay + (int)(pos / 8)) >> (pos % 8)) & 0x01;
+}
+
+uint8_t setBit(unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8], int pos, uint8_t bit){
+  *(invertDisplay + (int)(pos / 8)) = (*(invertDisplay + (int)(pos / 8)) & ~(0x01 << (pos % 8))) | bit << (pos % 8);
 }
 
 void appendText(char displayChars[DISPLAY_LENGTH], char *text, uint8_t xPos, uint8_t yPos){
@@ -405,7 +408,7 @@ void drawDiagram(char displayChars[DISPLAY_LENGTH]){
   drawGraph(displayChars, maxTime, maxTemp);
 }
 
-void fillTable(char displayChars[DISPLAY_LENGTH]){
+void fillTable(char displayChars[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
   strncpy((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 10, 5), "t/h\u001A\u001A\u001A\u001A\u001A\u001A", 3*3);
   strncpy((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 5, 5), "T/°C\u001A\u001A\u001A\u001A\u001A\u001A\u001A", 4*3);
 
@@ -415,6 +418,17 @@ void fillTable(char displayChars[DISPLAY_LENGTH]){
     }
     formatTime((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
     addIntToDisplay(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
+    if((int)(selected_field / 2) == i){
+      if (selected_field % 2 == 0) {
+        for (size_t j = 0; j < 5; j++) {
+          setBit(invertDisplay, j + DISPLAY_WIDTH - 11 + (7 + i) * DISPLAY_WIDTH, 1);
+        }
+      } else {
+        for (size_t j = 0; j < 4; j++) {
+          setBit(invertDisplay, j + DISPLAY_WIDTH - 5 + (7 + i) * DISPLAY_WIDTH, 1);
+        }
+      }
+    }
   }
 }
 
@@ -501,14 +515,23 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
   drawSeparationLines(staticDisplay);
 }
 
-void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISPLAY_LENGTH], struct uint_displayLength invertDisplay){
+void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
+  appendText(dynamicDisplay, "12:34:56h", 0, 0);
+  appendText(dynamicDisplay, "1105oC/1255oC", 28, 0);
+  appendText(dynamicDisplay, "1496W", 69, 0);
+
+  drawDiagram(dynamicDisplay);
+  fillTable(dynamicDisplay, invertDisplay);
+}
+
+void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
   char invert[] = "\u001b[7m";
   char reset[] = "\u001b[27m";
 
   int invertedRegionCounter = 0;                                 // checking how large the
   uint8_t lastBit = 0;                                           // final displayChars array
-  for (size_t i = 0; i < sizeof(uint_displayLength) * 8; i++) {  // has to be to contain the
-    uint8_t currentBit = (invertDisplay.bits >> i) & 0x01;       // invert/reset video commands
+  for (size_t i = 0; i < sizeof(invertDisplay) * 8; i++) {  // has to be to contain the
+    uint8_t currentBit = getBit(invertDisplay, i);       // invert/reset video commands
     if(currentBit == 1 && lastBit == 0){
       invertedRegionCounter++;
     }
@@ -521,55 +544,35 @@ void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISP
   int displayCharIterator = 0;                                   // merging staticDisplay and dynamicDisplay
   lastBit = 0;                                                   // and inserting the invert/reset video commands
   for (size_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
-    // Serial.println(displayCharIterator);
     if(i % DISPLAY_WIDTH == 0){
       strcpy(displayChars + displayCharIterator, "\n");
-      Serial.print("newline: ");
-      Serial.println(i);
       displayCharIterator++;
     }
 
-    uint8_t currentBit = (invertDisplay.bits >> i) & 0x01;
+    uint8_t currentBit = getBit(invertDisplay, i);
     if(currentBit == 1 && lastBit == 0){
       strcpy(displayChars + displayCharIterator, invert);
-      Serial.print("invert: ");
-      Serial.println(i);
-      displayCharIterator += sizeof(invert);
+      displayCharIterator += 4;
     }
     if(currentBit == 0 && lastBit == 1){
       strcpy(displayChars + displayCharIterator, reset);
-      Serial.print("reset: ");
-      Serial.println(i);
-      displayCharIterator += sizeof(reset);
+      displayCharIterator += 5;
     }
     lastBit = currentBit;
 
     if (dynamicDisplay[3 * i] != '\0') {
       strncpy(displayChars + displayCharIterator, dynamicDisplay + i * 3, 3);
-      // Serial.println("static");
     } else if (staticDisplay[3 * i] != '\0') {
       strncpy(displayChars + displayCharIterator, staticDisplay + i * 3, 3);
-      // Serial.println("dynamic");
     } else {
       strcpy(displayChars + displayCharIterator, " ");
-       Serial.println("space");
     }
     while(*(displayChars + displayCharIterator) != '\0'){
       displayCharIterator++;
-      //Serial.println("advance");
     }
 
   }
-  Serial.println("----------------------------------------------");
-  for (size_t i = 0; i < displayCharsLength; i++) {
-    break;
-    if(*(displayChars + i) == '\0'){
-      Serial.println(i);
-    }
-  }
-
   sendDisplay(displayChars);
-
   free(displayChars);
 }
 
@@ -621,8 +624,11 @@ void loop(){
   }
 
   char dynamicDisplay[DISPLAY_LENGTH] = {};
-  struct uint_displayLength invertDisplay;
-  invertDisplay.bits = 0;
+  unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
+  for (size_t i = 0; i < 200; i++) {
+    break;
+    setBit(invertDisplay, i + 1000, 1);
+  }
   generateDynamicDisplay(dynamicDisplay, invertDisplay);
   processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
 
