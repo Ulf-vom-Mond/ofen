@@ -86,11 +86,27 @@ int adjustRotaryValue(){
   return pow(((double)speed - ADJUST_TEMPERATURE_THRESHHOLD) / (POINT_50 - ADJUST_TEMPERATURE_THRESHHOLD), 2) * 49 + 1;
 }
 
+void adjustSetpoint(int adjustment){
+  setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustment;
+  if(selected_field % 2 == 0){
+    if (selected_field > 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] < setpoints[(int)(selected_field / 2) - 1][selected_field % 2]) {
+      setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) - 1][selected_field % 2];
+      return;
+    } else if (selected_field < SETPOINTS_COUNT * 2 - 2 && setpoints[(int)(selected_field / 2)][selected_field % 2] > setpoints[(int)(selected_field / 2) + 1][selected_field % 2]) {
+      setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) + 1][selected_field % 2];
+      return;
+    }
+  }
+  if(setpoints[(int)(selected_field / 2)][selected_field % 2] < 0){
+    setpoints[(int)(selected_field / 2)][selected_field % 2] = 0;
+  }
+}
+
 void IRAM_ATTR coilA(){
   if(rotary == 0){
     rotary += 1;
   }else{
-    setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustRotaryValue();
+    adjustSetpoint(adjustRotaryValue());
   }
   attachInterrupt(GPIO_COIL_A, coilAReset, FALLING);
 }
@@ -99,7 +115,7 @@ void IRAM_ATTR coilB(){
   if(rotary == 0){
     rotary += 1;
   }else{
-    setpoints[(int)(selected_field / 2)][selected_field % 2] -= adjustRotaryValue();
+    adjustSetpoint(-adjustRotaryValue());
   }
   attachInterrupt(GPIO_COIL_B, coilBReset, FALLING);
 }
@@ -155,7 +171,7 @@ void IRAM_ATTR middle_up(){
 }
 
 void IRAM_ATTR right(){
-  if (setpoints[(int)(selected_field / 2 + 0.5)][0] != -1) {
+  if (setpoints[(int)((selected_field + 1) / 2)][0] != -1) {
     selected_field++;
   }
 }
@@ -364,6 +380,7 @@ void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int ma
 }
 
 void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
+  Serial.println(maxTime);
   for (int i = 0; i < TIME_AXIS_LENGTH - 1; i++) {
     int lastSetpoint = 0;
     int currentTime = i * maxTime / (TIME_AXIS_LENGTH - 1);
@@ -398,7 +415,7 @@ void drawDiagram(char displayChars[DISPLAY_LENGTH]){
   }
 
   for (int i = SETPOINTS_COUNT - 1; i >= 0; i--) {
-    if(setpoints[i][0] != 0){
+    if(setpoints[i][0] > 0){
       maxTime = setpoints[i][0];
       break;
     }
@@ -416,8 +433,12 @@ void fillTable(char displayChars[DISPLAY_LENGTH], unsigned char invertDisplay[DI
     if(setpoints[i][0] == 0 && i != 0){
       break;
     }
-    formatTime((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
-    addIntToDisplay(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
+    if(setpoints[i][0] >= 0){
+      formatTime((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
+    }
+    if(setpoints[i][1] >= 0){
+      addIntToDisplay(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
+    }
     if((int)(selected_field / 2) == i){
       if (selected_field % 2 == 0) {
         for (size_t j = 0; j < 5; j++) {
