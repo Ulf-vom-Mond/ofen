@@ -59,19 +59,6 @@ int setpoints[SETPOINTS_COUNT][2] = {
 
 char staticDisplay[DISPLAY_LENGTH] = {};
 
-struct Color{
-  unsigned char redFg;
-  unsigned char greenFg;
-  unsigned char blueFg;
-  unsigned char redBg;
-  unsigned char greenBg;
-  unsigned char blueBg;
-};
-
-struct uint_displayLength {
-  unsigned int bits:DISPLAY_WIDTH * DISPLAY_HEIGHT;
-};
-
 void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
 
@@ -195,7 +182,7 @@ uint8_t setBit(unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8], 
   *(invertDisplay + (int)(pos / 8)) = (*(invertDisplay + (int)(pos / 8)) & ~(0x01 << (pos % 8))) | bit << (pos % 8);
 }
 
-void appendText(char displayChars[DISPLAY_LENGTH], char *text, uint8_t xPos, uint8_t yPos){
+void appendLargeText(char displayChars[DISPLAY_LENGTH], char *text, uint8_t xPos, uint8_t yPos){
 
   char pattern[28];
   memcpy(pattern, letterToPattern(text[0]), 28);
@@ -209,7 +196,14 @@ void appendText(char displayChars[DISPLAY_LENGTH], char *text, uint8_t xPos, uin
   }
   int textLen = strlen(text) - 1;
   if(textLen >= 1 && xPos + 3 < DISPLAY_WIDTH){
-    appendText(displayChars, ++text, xPos + 3, yPos);
+    appendLargeText(displayChars, ++text, xPos + 3, yPos);
+  }
+}
+
+void appendText(char displayChars[DISPLAY_LENGTH], char *text, uint8_t xPos, uint8_t yPos){
+  strncpy((char*)positionToPointer(displayChars, xPos, yPos), text, 3);
+  if(strlen(text + 3) > 0){
+    appendText(displayChars, text + 3, xPos + 1, yPos);
   }
 }
 
@@ -260,63 +254,65 @@ void drawSeparationLines(char displayChars[DISPLAY_LENGTH]){
           int end_x_k = lines[k].start_x + (lines[k].len - 1) * (1 - lines[k].direction);
           int end_y_k = lines[k].start_y + (lines[k].len - 1) * lines[k].direction;
 
-          strncpy(str, "╋", 4);
+          strncpy(str, "┼", 4);
 
           if(current_x_pos == lines[i].start_x && current_y_pos == lines[i].start_y){
             if(lines[i].direction){ // y
-              strncpy(str, "┳", 4);
+              strncpy(str, "┬", 4);
             }else{ // x
-              strncpy(str, "┣", 4);
+              strncpy(str, "├", 4);
             }
           }
           if(current_x_pos == lines[k].start_x && current_y_pos == lines[k].start_y){
             if(lines[k].direction){ // y
-              strncpy(str, "┳", 4);
+              strncpy(str, "┬", 4);
             }else{ // x
-              strncpy(str, "┣", 4);
+              strncpy(str, "├", 4);
             }
           }
           if(current_x_pos == end_x_i && current_y_pos == end_y_i){
             if(lines[i].direction){ // y
-              strncpy(str, "┻", 4);
+              strncpy(str, "┴", 4);
             }else{ // x
-              strncpy(str, "┫", 4);
+              strncpy(str, "┤", 4);
             }
           }
           if(current_x_pos == end_x_k && current_y_pos == end_y_k){
             if(lines[k].direction){ // y
-              strncpy(str, "┻", 4);
+              strncpy(str, "┴", 4);
             }else{ // x
-              strncpy(str, "┫", 4);
+              strncpy(str, "┤", 4);
             }
           }
 
           if(current_x_pos == lines[i].start_x && current_y_pos == lines[i].start_y && current_x_pos == lines[k].start_x && current_y_pos == lines[k].start_y){
-            strncpy(str, "┏", 4);
+            strncpy(str, "┌", 4);
           }
           if(current_x_pos == lines[i].start_x && current_y_pos == lines[i].start_y && current_x_pos == end_x_k && current_y_pos == end_y_k){
             if(lines[k].direction){ // y
-              strncpy(str, "┗", 4);
+              strncpy(str, "└", 4);
             }else{ // x
-              strncpy(str, "┓", 4);
-            }          }
+              strncpy(str, "┐", 4);
+            }
+          }
           if(current_x_pos == end_x_i && current_y_pos == end_y_i && current_x_pos == lines[k].start_x && current_y_pos == lines[k].start_y){
             if(lines[k].direction){ // y
-              strncpy(str, "┓", 4);
+              strncpy(str, "┐", 4);
             }else{ // x
-              strncpy(str, "┗", 4);
-            }          }
+              strncpy(str, "└", 4);
+            }
+          }
           if(current_x_pos == end_x_i && current_y_pos == end_y_i && current_x_pos == end_x_k && current_y_pos == end_y_k){
-            strncpy(str, "┛", 4);
+            strncpy(str, "┘", 4);
           }
         }
       }
 
       if(str[0] == '\0'){
         if(lines[i].direction){
-          strncpy(str, "┃", 4);
+          strncpy(str, "│", 4);
         }else{
-          strncpy(str, "━", 4);
+          strncpy(str, "─", 4);
         }
       }
 
@@ -336,13 +332,14 @@ int getDigitCount(int num){
 }
 
 void addIntToDisplay(char displayChars[DISPLAY_LENGTH], int x, int y, int num){
-  int numLen = getDigitCount(num);
-  char numString[numLen * 3 + 1] = {};
-  for (size_t i = 0; i < numLen * 2; i++) {
-    numString[i] = '\u001A';
+  int rest = num / 10;
+  int digit = ((num / 10.0) - rest) * 10;
+  char numString[1] = {};
+  sprintf(numString, "%d", (int)digit);
+  memcpy(positionToPointer(displayChars, x, y), numString, 1);
+  if(rest != 0){
+    addIntToDisplay(displayChars, x - 1, y, rest);
   }
-  sprintf(&numString[numLen * 2], "%d", (int)num);
-  memcpy(positionToPointer(displayChars, x - numLen + 1, y), numString, numLen * 3);
 }
 
 void formatTime(char *dest, int minutes){
@@ -351,34 +348,33 @@ void formatTime(char *dest, int minutes){
 
   size_t i;
   for (i = 0; i < 2 - getDigitCount(hours); i++) {
-    strncpy(dest + i, "0", 1);
+    strncpy(dest + i * 3, "0", 1);
   }
-  sprintf(dest + i, "%d", hours);
-  strncpy(dest + 2, ":", 1);
+  addIntToDisplay(dest, 1, 0, hours);
+  strncpy(dest + 6, ":", 1);
   for (i = 0; i < 2 - getDigitCount(minutes); i++) {
-    strncpy(dest + 3 + i, "0", 1);
+    strncpy(dest + 9 + i * 3 , "0", 1);
   }
-  sprintf(dest + 3 + i, "%d", minutes);
-  strncpy(dest + 5, "\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A\u001A", 10);
+  addIntToDisplay(dest, 4, 0, minutes);
 }
 
 void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
-  strncpy((char*)positionToPointer(displayChars, 0, 4), "T\u001A\u001A/\u001A\u001A°\u001AC\u001A\u001A^\u001A\u001A", 5 * 3);
-  strncpy((char*)positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH, DISPLAY_HEIGHT - 2), ">\u001A\u001A", 3);
-  strncpy((char*)positionToPointer(displayChars, 4 + TIME_AXIS_LENGTH - 2, DISPLAY_HEIGHT - 1), "t\u001A\u001A/\u001A\u001Ah\u001A\u001A", 3 * 3);
-  strncpy((char*)positionToPointer(displayChars, ORIGIN_X, ORIGIN_Y), "╋", 3);
-  strncpy((char*)positionToPointer(displayChars, ORIGIN_X - 1, ORIGIN_Y + 1), "0\u001A\u001A", 3);
+  appendText(displayChars, "T\0\0/\0\0°\0C\0\0^\0\0", 0, 4);
+  appendText(displayChars, ">\0\0", 4 + TIME_AXIS_LENGTH, DISPLAY_HEIGHT - 2);
+  appendText(displayChars, "t\0\0/\0\0h\0\0", 4 + TIME_AXIS_LENGTH - 2, DISPLAY_HEIGHT - 1);
+  appendText(displayChars, "┼", ORIGIN_X, ORIGIN_Y);
+  appendText(displayChars, "0\0\0", ORIGIN_X - 1, ORIGIN_Y + 1);
 
   for (int i = 2; i < TEMP_AXIS_LENGTH - 1; i += 2) {
     int tempVal = maxTemp * i / (TEMP_AXIS_LENGTH - 1);
     addIntToDisplay(displayChars, 3, 18 - i, tempVal);
-    strncpy((char*)positionToPointer(displayChars, 4, 18 - i), "╋", 3);
+    strncpy((char*)positionToPointer(displayChars, 4, 18 - i), "┼", 3);
   }
 
   for (int i = 10; i < TIME_AXIS_LENGTH - 1; i += 10) {
     int timeVal = maxTime * i / (TIME_AXIS_LENGTH - 1);
     formatTime((char*)positionToPointer(displayChars, 2 + i, 19), timeVal);
-    strncpy((char*)positionToPointer(displayChars, 4 + i, 18), "╋", 3);
+    strncpy((char*)positionToPointer(displayChars, 4 + i, 18), "┼", 3);
   }
 }
 
@@ -395,11 +391,11 @@ void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
       float scaledTemp = temp * (TEMP_AXIS_LENGTH - 1) / maxTemp;
       float scaledTempDecimals = scaledTemp - (int)scaledTemp;
       if(scaledTempDecimals < 0.33){
-        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), ".\u001A\u001A", 3);
+        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), ".", 3);
       }else if(scaledTempDecimals >= 0.67){
-        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "'\u001A\u001A", 3);
+        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "'", 3);
       }else{
-        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "·\u001A", 3);
+        strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), "·", 3);
       }
     }
   }
@@ -428,8 +424,8 @@ void drawDiagram(char displayChars[DISPLAY_LENGTH]){
 }
 
 void fillTable(char displayChars[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
-  strncpy((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 10, 5), "t/h\u001A\u001A\u001A\u001A\u001A\u001A", 3*3);
-  strncpy((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 5, 5), "T/°C\u001A\u001A\u001A\u001A\u001A\u001A\u001A", 4*3);
+  appendText(displayChars, "t\0\0/\0\0h\0\0", DISPLAY_WIDTH - 10, 5);
+  appendText(displayChars, "T\0\0/\0\0°\0C\0\0", DISPLAY_WIDTH - 5, 5);
 
   for (size_t i = 0; i < SETPOINTS_COUNT; i++) {
     if(setpoints[i][0] == 0 && i != 0){
@@ -481,19 +477,19 @@ char* letterToPattern(char letter){ //x, y and 3 chars for unicode
   char *pattern;
   switch (letter) {
     case '0':
-      pattern = "┏━┓┃ \u001A\u001A┃┗━┛";
+      pattern = "┏━┓┃ \0\0┃┗━┛";
       break;
     case '1':
-      pattern = " \u001A\u001A \u001A\u001A╻ \u001A\u001A \u001A\u001A┃ \u001A\u001A \u001A\u001A╹";
+      pattern = " \0\0 \0\0╻ \0\0 \0\0┃ \0\0 \0\0╹";
       break;
     case '2':
       pattern = "╺━┓┏━┛┗━╸";
       break;
     case '3':
-      pattern = "╺━┓ \u001A\u001A━┫╺━┛";
+      pattern = "╺━┓ \0\0━┫╺━┛";
       break;
     case '4':
-      pattern = "╻ \u001A\u001A╻┗━┫ \u001A\u001A \u001A\u001A╹";
+      pattern = "╻ \0\0╻┗━┫ \0\0 \0\0╹";
       break;
     case '5':
       pattern = "┏━╸┗━┓╺━┛";
@@ -502,7 +498,7 @@ char* letterToPattern(char letter){ //x, y and 3 chars for unicode
       pattern = "┏━╸┣━┓┗━┛";
       break;
     case '7':
-      pattern = "╺━┓ \u001A\u001A \u001A\u001A┃ \u001A\u001A \u001A\u001A╹";
+      pattern = "╺━┓ \0\0 \0\0┃ \0\0 \0\0╹";
       break;
     case '8':
       pattern = "┏━┓┣━┫┗━┛";
@@ -511,25 +507,25 @@ char* letterToPattern(char letter){ //x, y and 3 chars for unicode
       pattern = "┏━┓┗━┫╺━┛";
       break;
     case '/':
-      pattern = " \u001A\u001A \u001A\u001A╱ \u001A\u001A╱ \u001A\u001A╱ \u001A\u001A \u001A\u001A";
+      pattern = " \0\0 \0\0╱ \0\0╱ \0\0╱ \0\0 \0\0";
       break;
     case 'o':
-      pattern = "┏━┓┗━┛ \u001A\u001A \u001A\u001A \u001A\u001A";
+      pattern = "┏━┓┗━┛ \0\0 \0\0 \0\0";
       break;
     case 'C':
-      pattern = "┏━╸┃ \u001A\u001A \u001A\u001A┗━╸";
+      pattern = "┏━╸┃ \0\0 \0\0┗━╸";
       break;
     case 'h':
-      pattern = "╻ \u001A\u001A \u001A\u001A┣━┓╹ \u001A\u001A╹";
+      pattern = "╻ \0\0 \0\0┣━┓╹ \0\0╹";
       break;
     case ':':
-      pattern = " \u001A\u001A╻ \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A╹ \u001A\u001A";
+      pattern = " \0\0╻ \0\0 \0\0 \0\0 \0\0 \0\0╹ \0\0";
       break;
     case 'W':
-      pattern = "╻ \u001A\u001A╻┃┃┃┗┻┛";
+      pattern = "╻ \0\0╻┃┃┃┗┻┛";
       break;
     default:
-      pattern = " \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A \u001A\u001A";
+      pattern = " \0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0";
   }
   return pattern;
 }
@@ -539,9 +535,9 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
 }
 
 void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
-  appendText(dynamicDisplay, "12:34:56h", 0, 0);
-  appendText(dynamicDisplay, "1105oC/1255oC", 28, 0);
-  appendText(dynamicDisplay, "1496W", 69, 0);
+  appendLargeText(dynamicDisplay, "12:34:56h", 0, 0);
+  appendLargeText(dynamicDisplay, "1105oC/1255oC", 28, 0);
+  appendLargeText(dynamicDisplay, "1496W", 69, 0);
 
   drawDiagram(dynamicDisplay);
   fillTable(dynamicDisplay, invertDisplay);
@@ -627,13 +623,13 @@ void setup() {
   Serial.print("AP IP address: ");
   Serial.println(myIP);
   server.begin();
-
   Serial.println("Server started");
 
   generateStaticDisplay(staticDisplay);
 }
 
 void loop(){
+  unsigned long loopTime = micros();
   WiFiClient newClient = server.available();   // listen for incoming clients
 
   if(newClient){
@@ -648,12 +644,9 @@ void loop(){
 
   char dynamicDisplay[DISPLAY_LENGTH] = {};
   unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
-  for (size_t i = 0; i < 200; i++) {
-    break;
-    setBit(invertDisplay, i + 1000, 1);
-  }
+
   generateDynamicDisplay(dynamicDisplay, invertDisplay);
   processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
 
-  delay(100);
+  delay(150);
 }
