@@ -79,13 +79,20 @@ void adjustSetpoint(int adjustment){
     if (selected_field > 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] < setpoints[(int)(selected_field / 2) - 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) - 1][selected_field % 2];
       return;
-    } else if (selected_field < SETPOINTS_COUNT * 2 - 2 && setpoints[(int)(selected_field / 2)][selected_field % 2] > setpoints[(int)(selected_field / 2) + 1][selected_field % 2]) {
+    } else if (selected_field < SETPOINTS_COUNT * 2 - 2 && setpoints[(int)(selected_field / 2) + 1][selected_field % 2] != -1 && setpoints[(int)(selected_field / 2)][selected_field % 2] > setpoints[(int)(selected_field / 2) + 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) + 1][selected_field % 2];
+      return;
+    } else if (setpoints[(int)(selected_field / 2)][selected_field % 2] > 99 * 60 + 59) {
+      setpoints[(int)(selected_field / 2)][selected_field % 2] = 99 * 60 + 59;
       return;
     }
   }
   if(setpoints[(int)(selected_field / 2)][selected_field % 2] < 0){
     setpoints[(int)(selected_field / 2)][selected_field % 2] = 0;
+    return;
+  }
+  if (selected_field % 2 != 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] > 1300) {
+    setpoints[(int)(selected_field / 2)][selected_field % 2] = 1300;
   }
 }
 
@@ -466,7 +473,7 @@ void sendDisplay(char *displayChars){
 }
 
 void initializeClient(WiFiClient client){
-  client.print("\u001b[0m\u001b[?25l\u001b[2J\u001b[1;1H"); //reset all graphic settings (SGR parameters), hide cursor, erase display, go to top left corner of display
+  client.print("\u001b[0m\u001b[?25l\u001b[3J\u001b[1;1H"); //reset all graphic settings (SGR parameters), hide cursor, erase display, go to top left corner of display
 }
 
 char* letterToPattern(char letter){ //x, y and 3 chars for unicode
@@ -510,7 +517,7 @@ char* letterToPattern(char letter){ //x, y and 3 chars for unicode
       pattern = " \0\0 \0\0╱ \0\0╱ \0\0╱ \0\0 \0\0";
       break;
     case 'o':
-      pattern = "┏━┓┗━┛ \0\0 \0\0 \0\0";
+      pattern = " \0\0 \0\0o\0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0";
       break;
     case 'C':
       pattern = "┏━╸┃ \0\0 \0\0┗━╸";
@@ -537,7 +544,7 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
 void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
   appendLargeText(dynamicDisplay, "12:34:56h", 0, 0);
   appendLargeText(dynamicDisplay, "1105oC/1255oC", 28, 0);
-  appendLargeText(dynamicDisplay, "1496W", 69, 0);
+  appendLargeText(dynamicDisplay, "1496W", 68, 0);
 
   drawDiagram(dynamicDisplay);
   fillTable(dynamicDisplay, invertDisplay);
@@ -563,7 +570,7 @@ void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISP
   int displayCharIterator = 0;                                   // merging staticDisplay and dynamicDisplay
   lastBit = 0;                                                   // and inserting the invert/reset video commands
   for (size_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
-    if(i % DISPLAY_WIDTH == 0){
+    if(i != 0 && i % DISPLAY_WIDTH == 0){
       strcpy(displayChars + displayCharIterator, "\n");
       displayCharIterator++;
     }
@@ -641,12 +648,11 @@ void loop(){
       }
     }
   }
-
   char dynamicDisplay[DISPLAY_LENGTH] = {};
   unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
 
   generateDynamicDisplay(dynamicDisplay, invertDisplay);
   processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
 
-  delay(150);
+  delay(50);
 }
