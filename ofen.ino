@@ -3,6 +3,9 @@
 #include <WiFiAP.h>
 #include <string.h>
 #include "driver/adc.h"
+#include "driver/timer.h"
+#include "freertos/task.h"
+#include <PID_v1.h>
 
 #define MAX_CLIENTS 5
 
@@ -14,12 +17,15 @@
 #define GPIO_COIL_B 23
 #define ADC_SPEED_READING ADC1_GPIO34_CHANNEL
 #define ADC_SPEED_REFERENCE ADC1_GPIO35_CHANNEL
+#define ADC_TEMP_READING ADC1_GPIO33_CHANNEL
 #define POINT_50 400
 #define ADJUST_TEMPERATURE_THRESHHOLD 50
 
 #define GPIO_LEFT   25
 #define GPIO_MIDDLE 26
 #define GPIO_RIGHT  27
+#define GPIO_SWITCH 12
+#define GPIO_HEATER 13
 
 #define SETPOINTS_COUNT 12
 #define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
@@ -58,6 +64,9 @@ int setpoints[SETPOINTS_COUNT][2] = {
 };
 
 char staticDisplay[DISPLAY_LENGTH] = {};
+
+uint8_t running = 0;
+unsigned long runningSince = 0;
 
 void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
@@ -170,6 +179,32 @@ void IRAM_ATTR middle_up(){
 void IRAM_ATTR right(){
   if (setpoints[(int)((selected_field + 1) / 2)][0] != -1) {
     selected_field++;
+  }
+}
+
+double getElapsedMinutes(){
+  if(running == 1){
+    return (millis() - runningSince) / 1000.0 / 60.0;
+  }else{
+    return 0;
+  }
+}
+
+int getCurrentSetpoint(){
+  if(running == 1){
+    double minutesRunning = getElapsedMinutes();
+    int lastSetpoint = 0;
+    while(setpoints[lastSetpoint + 1][0] < minutesRunning && lastSetpoint < SETPOINTS_COUNT - 1) {
+      lastSetpoint++;
+    }
+    if(setpoints[lastSetpoint + 1][0] != setpoints[lastSetpoint][0]){
+      double slope = (setpoints[lastSetpoint + 1][1] - setpoints[lastSetpoint][1]) / (setpoints[lastSetpoint + 1][0] - setpoints[lastSetpoint][0]);
+      return ((minutesRunning - setpoints[lastSetpoint][0]) * slope + setpoints[lastSetpoint][1]);
+    }else{
+      return setpoints[lastSetpoint + 1][1];
+    }
+  }else{
+    return 0;
   }
 }
 
@@ -338,18 +373,18 @@ int getDigitCount(int num){
   }
 }
 
-void addIntToDisplay(char displayChars[DISPLAY_LENGTH], int x, int y, int num){
+void printInt(char *str, int x, int y, int num){
   int rest = num / 10;
   int digit = ((num / 10.0) - rest) * 10;
   char numString[1] = {};
   sprintf(numString, "%d", (int)digit);
-  memcpy(positionToPointer(displayChars, x, y), numString, 1);
+  memcpy(positionToPointer(str, x, y), numString, 1);
   if(rest != 0){
-    addIntToDisplay(displayChars, x - 1, y, rest);
+    printInt(str, x - 1, y, rest);
   }
 }
 
-void formatTime(char *dest, int minutes){
+void addTimeToDisplay(char *dest, int minutes){
   int hours = (minutes - minutes % 60) / 60;
   minutes = minutes % 60;
 
@@ -357,12 +392,28 @@ void formatTime(char *dest, int minutes){
   for (i = 0; i < 2 - getDigitCount(hours); i++) {
     strncpy(dest + i * 3, "0", 1);
   }
-  addIntToDisplay(dest, 1, 0, hours);
+  printInt(dest, 1, 0, hours);
   strncpy(dest + 6, ":", 1);
   for (i = 0; i < 2 - getDigitCount(minutes); i++) {
     strncpy(dest + 9 + i * 3 , "0", 1);
   }
-  addIntToDisplay(dest, 4, 0, minutes);
+  printInt(dest, 4, 0, minutes);
+}
+
+void formatTime(char *dest, double minutes){
+  Serial.print("input: ");
+  Serial.print(minutes);
+  int seconds = minutes * 60.0 - (int)(minutes) * 60;
+  Serial.print(", seconds: ");
+  Serial.print(seconds);
+  int hours = ((int)minutes - (int)minutes % 60) / 60;
+  Serial.print(", hours: ");
+  Serial.print(hours);
+  minutes = (int)minutes % 60;
+  Serial.print(", minutes: ");
+  Serial.println(minutes);
+
+  sprintf(dest, "%02d:%02d:%02dh", hours, (int)minutes, seconds);
 }
 
 void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
@@ -374,13 +425,13 @@ void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int ma
 
   for (int i = 2; i < TEMP_AXIS_LENGTH - 1; i += 2) {
     int tempVal = maxTemp * i / (TEMP_AXIS_LENGTH - 1);
-    addIntToDisplay(displayChars, 3, 18 - i, tempVal);
+    printInt(displayChars, 3, 18 - i, tempVal);
     strncpy((char*)positionToPointer(displayChars, 4, 18 - i), "┼", 3);
   }
 
   for (int i = 10; i < TIME_AXIS_LENGTH - 1; i += 10) {
     int timeVal = maxTime * i / (TIME_AXIS_LENGTH - 1);
-    formatTime((char*)positionToPointer(displayChars, 2 + i, 19), timeVal);
+    addTimeToDisplay((char*)positionToPointer(displayChars, 2 + i, 19), timeVal);
     strncpy((char*)positionToPointer(displayChars, 4 + i, 18), "┼", 3);
   }
 }
@@ -439,10 +490,10 @@ void fillTable(char displayChars[DISPLAY_LENGTH], unsigned char invertDisplay[DI
       break;
     }
     if(setpoints[i][0] >= 0){
-      formatTime((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
+      addTimeToDisplay((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
     }
     if(setpoints[i][1] >= 0){
-      addIntToDisplay(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
+      printInt(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
     }
     if((int)(selected_field / 2) == i){
       if (selected_field % 2 == 0) {
@@ -466,7 +517,6 @@ void sendDisplay(char *displayChars){
     if(!(clients[i] -> connected())){
       clients[i] = NULL;
     }else{
-      initializeClient(*clients[i]);
       clients[i] -> print(displayChars);
     }
   }
@@ -542,8 +592,12 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
 }
 
 void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
-  appendLargeText(dynamicDisplay, "12:34:56h", 0, 0);
-  appendLargeText(dynamicDisplay, "1105oC/1255oC", 28, 0);
+  char timeString[10] = {};
+  formatTime(timeString, getElapsedMinutes());
+  appendLargeText(dynamicDisplay, timeString, 0, 0);
+  char tempString[14] = {};
+  sprintf(tempString, "%4doC/%4doC", voltageToTemp(adc1_get_raw(ADC_TEMP_READING)), getCurrentSetpoint());
+  appendLargeText(dynamicDisplay, tempString, 28, 0);
   appendLargeText(dynamicDisplay, "1496W", 68, 0);
 
   drawDiagram(dynamicDisplay);
@@ -565,9 +619,10 @@ void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISP
   }
 
   int displayCharsLength = DISPLAY_LENGTH + DISPLAY_HEIGHT - 1 + invertedRegionCounter * (sizeof(invert) + sizeof(reset));
-  char *displayChars = (char*)malloc(displayCharsLength);
+  char *displayChars = (char*)malloc(displayCharsLength + 20);
   memset(displayChars, '\0', displayCharsLength);
-  int displayCharIterator = 0;                                   // merging staticDisplay and dynamicDisplay
+  strcpy(displayChars, "\u001b[0m\u001b[?25l\u001b[3J\u001b[1;1H");
+  int displayCharIterator = 20;                                   // merging staticDisplay and dynamicDisplay
   lastBit = 0;                                                   // and inserting the invert/reset video commands
   for (size_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
     if(i != 0 && i % DISPLAY_WIDTH == 0){
@@ -602,6 +657,110 @@ void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISP
   free(displayChars);
 }
 
+uint8_t dutycycleCounter = 0;
+
+double input = 0;
+double output = 0;
+double setpoint = 0;
+PID pid(&input, &output, &setpoint, 2, 5, 1, DIRECT);
+
+void IRAM_ATTR pwmISR(void *param){
+  TIMERG0.int_clr_timers.t0 = 1;
+  if(dutycycleCounter >= 100){
+    digitalWrite(GPIO_HEATER, HIGH);
+    dutycycleCounter -= 100;
+  }else{
+    digitalWrite(GPIO_HEATER, LOW);
+  }
+  dutycycleCounter += output;
+  timer_set_alarm(TIMER_GROUP_0, TIMER_0, TIMER_ALARM_EN);
+  TIMERG0.int_clr_timers.t0 = 0;
+}
+
+void IRAM_ATTR pidISR(void *param){
+  TIMERG0.int_clr_timers.t1 = 1;
+
+  if(running == 1){
+    input = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING)));
+    setpoint = getCurrentSetpoint();
+  }
+
+  pid.Compute();
+  timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);
+  TIMERG0.int_clr_timers.t1 = 0;
+}
+
+void IRAM_ATTR turnOff();
+
+void IRAM_ATTR turnOn(){
+  running = 1;
+  runningSince = millis();
+  pid.SetMode(AUTOMATIC);
+  timer_start(TIMER_GROUP_0, TIMER_0);
+  attachInterrupt(GPIO_SWITCH, turnOff, RISING);
+}
+
+void IRAM_ATTR turnOff(){
+  running = 0;
+  pid.SetMode(MANUAL);
+  timer_pause(TIMER_GROUP_0, TIMER_0);
+  attachInterrupt(GPIO_SWITCH, turnOn, FALLING);
+}
+
+double adcToVoltage(int adc){
+  int adcMax = 4095;
+  double UMax = 1.1;
+  return UMax / adcMax * adc;
+}
+
+int voltageToTemp(double voltage){
+  int TMin = 0;
+  int TMax = 1300;
+  double UMin = 0;
+  double UMax = 52.410;
+  return (TMax - TMin) / (UMax - UMin) * voltage;
+}
+
+void core2(){
+  pinMode(GPIO_HEATER, OUTPUT);
+  const timer_config_t pwmTimer = {
+    .alarm_en = TIMER_ALARM_EN,
+    .counter_en = TIMER_START,
+    .intr_type = TIMER_INTR_LEVEL,
+    .counter_dir = TIMER_COUNT_UP,
+    .auto_reload = TIMER_AUTORELOAD_EN,
+    .divider = 50000
+  };
+  timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, 16);
+  timer_isr_register(TIMER_GROUP_0, TIMER_0, pwmISR, (void*)0, ESP_INTR_FLAG_IRAM, NULL);
+  timer_enable_intr(TIMER_GROUP_0, TIMER_0);
+  timer_init(TIMER_GROUP_0, TIMER_0, &pwmTimer);
+
+  const timer_config_t pidTimer = {
+    .alarm_en = TIMER_ALARM_EN,
+    .counter_en = TIMER_START,
+    .intr_type = TIMER_INTR_LEVEL,
+    .counter_dir = TIMER_COUNT_UP,
+    .auto_reload = TIMER_AUTORELOAD_EN,
+    .divider = 64000
+  };
+  timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, 1250);
+  timer_isr_register(TIMER_GROUP_0, TIMER_1, pidISR, (void*)0, ESP_INTR_FLAG_IRAM, NULL);
+  timer_enable_intr(TIMER_GROUP_0, TIMER_1);
+  timer_init(TIMER_GROUP_0, TIMER_1, &pidTimer);
+
+  pinMode(GPIO_SWITCH, INPUT_PULLUP);
+  attachInterrupt(GPIO_SWITCH, turnOn, FALLING);
+
+  adc1_config_channel_atten(ADC_TEMP_READING, ADC_ATTEN_DB_0);
+
+  pid.SetSampleTime(1000);
+  pid.SetOutputLimits(0, 100);
+
+  while(true){
+  }
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -631,6 +790,8 @@ void setup() {
   Serial.println(myIP);
   server.begin();
   Serial.println("Server started");
+
+  xTaskCreatePinnedToCore((TaskFunction_t)core2, "core2Task", 20000, NULL, 0, NULL, 0);
 
   generateStaticDisplay(staticDisplay);
 }
