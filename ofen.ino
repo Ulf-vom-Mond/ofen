@@ -18,6 +18,9 @@
 #define ADC_SPEED_READING ADC1_GPIO34_CHANNEL
 #define ADC_SPEED_REFERENCE ADC1_GPIO35_CHANNEL
 #define ADC_TEMP_READING ADC1_GPIO33_CHANNEL
+#define ADC_POWER_REFERNECE ADC1_GPIO32_CHANNEL
+#define ADC_VOLTAGE_READING ADC1_GPIO36_CHANNEL
+#define ADC_CURRENT_READING ADC1_GPIO39_CHANNEL
 #define POINT_50 400
 #define ADJUST_TEMPERATURE_THRESHHOLD 50
 
@@ -35,6 +38,13 @@
 
 #define LONG_PRESS 300
 
+#define VOLTAGE_MULTIPLIER 935
+#define CURRENT_MULTIPLIER 50
+#define ADC_CAL_M_ATTEN_0 0.00024504
+#define ADC_CAL_N_ATTEN_0 0.05922589
+#define ADC_CAL_M_ATTEN_11 0.00080334
+#define ADC_CAL_N_ATTEN_11 0.13154864
+
 WiFiClient *clients[MAX_CLIENTS] = { NULL };
 
 const char *ssid = "esp32";
@@ -50,12 +60,12 @@ unsigned long lastMiddlePress = millis();
 
 int setpoints[SETPOINTS_COUNT][2] = {
   {0,   0},
-  {20,  100},
-  {60,  800},
-  {90,  800},
-  {100, 600},
-  {180, 1000},
-  {200, 0},
+  {1,  100},
+  {2,  50},
+  {-1, -1},
+  {-1, -1},
+  {-1, -1},
+  {-1, -1},
   {-1, -1},
   {-1, -1},
   {-1, -1},
@@ -67,6 +77,8 @@ char staticDisplay[DISPLAY_LENGTH] = {};
 
 uint8_t running = 0;
 unsigned long runningSince = 0;
+
+double power = 0;
 
 void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
@@ -190,12 +202,14 @@ double getElapsedMinutes(){
   }
 }
 
-int getCurrentSetpoint(){
+int getCurrentSetpoint(double minutesRunning){
   if(running == 1){
-    double minutesRunning = getElapsedMinutes();
     int lastSetpoint = 0;
-    while(setpoints[lastSetpoint + 1][0] < minutesRunning && lastSetpoint < SETPOINTS_COUNT - 1) {
+    while(lastSetpoint <= SETPOINTS_COUNT - 1 && setpoints[lastSetpoint + 1][0] != -1 && setpoints[lastSetpoint + 1][0] < minutesRunning) {
       lastSetpoint++;
+    }
+    if(setpoints[lastSetpoint + 1][0] == -1){
+      return setpoints[lastSetpoint][1];
     }
     if(setpoints[lastSetpoint + 1][0] != setpoints[lastSetpoint][0]){
       double slope = (setpoints[lastSetpoint + 1][1] - setpoints[lastSetpoint][1]) / (setpoints[lastSetpoint + 1][0] - setpoints[lastSetpoint][0]);
@@ -401,17 +415,9 @@ void addTimeToDisplay(char *dest, int minutes){
 }
 
 void formatTime(char *dest, double minutes){
-  Serial.print("input: ");
-  Serial.print(minutes);
   int seconds = minutes * 60.0 - (int)(minutes) * 60;
-  Serial.print(", seconds: ");
-  Serial.print(seconds);
   int hours = ((int)minutes - (int)minutes % 60) / 60;
-  Serial.print(", hours: ");
-  Serial.print(hours);
   minutes = (int)minutes % 60;
-  Serial.print(", minutes: ");
-  Serial.println(minutes);
 
   sprintf(dest, "%02d:%02d:%02dh", hours, (int)minutes, seconds);
 }
@@ -439,14 +445,14 @@ void drawCoordinateSystem(char displayChars[DISPLAY_LENGTH], int maxTime, int ma
 void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
   for (int i = 0; i < TIME_AXIS_LENGTH - 1; i++) {
     int lastSetpoint = 0;
-    int currentTime = i * maxTime / (TIME_AXIS_LENGTH - 1);
+    float currentTime = i * (float)maxTime / (float)(TIME_AXIS_LENGTH - 1);
     while(setpoints[lastSetpoint + 1][0] < currentTime && lastSetpoint < SETPOINTS_COUNT - 1) {
       lastSetpoint++;
     }
     if(setpoints[lastSetpoint + 1][0] != setpoints[lastSetpoint][0]){
-      float slope = (setpoints[lastSetpoint + 1][1] - setpoints[lastSetpoint][1]) / (setpoints[lastSetpoint + 1][0] - setpoints[lastSetpoint][0]);
+      float slope = (float)(setpoints[lastSetpoint + 1][1] - setpoints[lastSetpoint][1]) / (float)(setpoints[lastSetpoint + 1][0] - setpoints[lastSetpoint][0]);
       float temp = ((currentTime - setpoints[lastSetpoint][0]) * slope + setpoints[lastSetpoint][1]);
-      float scaledTemp = temp * (TEMP_AXIS_LENGTH - 1) / maxTemp;
+      float scaledTemp = temp * (TEMP_AXIS_LENGTH - 1) / (float)maxTemp;
       float scaledTempDecimals = scaledTemp - (int)scaledTemp;
       if(scaledTempDecimals < 0.33){
         strncpy((char*)positionToPointer(displayChars, ORIGIN_X + i, ORIGIN_Y - scaledTemp), ".", 3);
@@ -596,9 +602,11 @@ void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char i
   formatTime(timeString, getElapsedMinutes());
   appendLargeText(dynamicDisplay, timeString, 0, 0);
   char tempString[14] = {};
-  sprintf(tempString, "%4doC/%4doC", voltageToTemp(adc1_get_raw(ADC_TEMP_READING)), getCurrentSetpoint());
+  sprintf(tempString, "%4doC/%4doC", voltageToTemp(adc1_get_raw(ADC_TEMP_READING)), getCurrentSetpoint(getElapsedMinutes()));
   appendLargeText(dynamicDisplay, tempString, 28, 0);
-  appendLargeText(dynamicDisplay, "1496W", 68, 0);
+  char powerString[6] = {};
+  sprintf(powerString, "%4dW", (int)power);
+  appendLargeText(dynamicDisplay, powerString, 68, 0);
 
   drawDiagram(dynamicDisplay);
   fillTable(dynamicDisplay, invertDisplay);
@@ -677,48 +685,34 @@ void IRAM_ATTR pwmISR(void *param){
   TIMERG0.int_clr_timers.t0 = 0;
 }
 
-void IRAM_ATTR pidISR(void *param){
-  TIMERG0.int_clr_timers.t1 = 1;
-
-  if(running == 1){
-    input = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING)));
-    setpoint = getCurrentSetpoint();
+double adcToVoltage(int adcReading, float attenDB){
+  if (attenDB == 0) {
+    return ADC_CAL_M_ATTEN_0 * adcReading + ADC_CAL_N_ATTEN_0;
+  } else if (attenDB == 11) {
+    return ADC_CAL_M_ATTEN_11 * adcReading + ADC_CAL_N_ATTEN_11;
   }
-
-  pid.Compute();
-  timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);
-  TIMERG0.int_clr_timers.t1 = 0;
-}
-
-void IRAM_ATTR turnOff();
-
-void IRAM_ATTR turnOn(){
-  running = 1;
-  runningSince = millis();
-  pid.SetMode(AUTOMATIC);
-  timer_start(TIMER_GROUP_0, TIMER_0);
-  attachInterrupt(GPIO_SWITCH, turnOff, RISING);
-}
-
-void IRAM_ATTR turnOff(){
-  running = 0;
-  pid.SetMode(MANUAL);
-  timer_pause(TIMER_GROUP_0, TIMER_0);
-  attachInterrupt(GPIO_SWITCH, turnOn, FALLING);
-}
-
-double adcToVoltage(int adc){
-  int adcMax = 4095;
-  double UMax = 1.1;
-  return UMax / adcMax * adc;
+  return 0;
 }
 
 int voltageToTemp(double voltage){
   int TMin = 0;
   int TMax = 1300;
   double UMin = 0;
-  double UMax = 52.410;
+  double UMax = 0.052410;
   return (TMax - TMin) / (UMax - UMin) * voltage;
+}
+
+void turnOn(){
+  running = 1;
+  runningSince = millis();
+  pid.SetMode(AUTOMATIC);
+  timer_start(TIMER_GROUP_0, TIMER_0);
+}
+
+void turnOff(){
+  running = 0;
+  pid.SetMode(MANUAL);
+  timer_pause(TIMER_GROUP_0, TIMER_0);
 }
 
 void core2(){
@@ -736,28 +730,44 @@ void core2(){
   timer_enable_intr(TIMER_GROUP_0, TIMER_0);
   timer_init(TIMER_GROUP_0, TIMER_0, &pwmTimer);
 
-  const timer_config_t pidTimer = {
-    .alarm_en = TIMER_ALARM_EN,
-    .counter_en = TIMER_START,
-    .intr_type = TIMER_INTR_LEVEL,
-    .counter_dir = TIMER_COUNT_UP,
-    .auto_reload = TIMER_AUTORELOAD_EN,
-    .divider = 64000
-  };
-  timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, 1250);
-  timer_isr_register(TIMER_GROUP_0, TIMER_1, pidISR, (void*)0, ESP_INTR_FLAG_IRAM, NULL);
-  timer_enable_intr(TIMER_GROUP_0, TIMER_1);
-  timer_init(TIMER_GROUP_0, TIMER_1, &pidTimer);
-
   pinMode(GPIO_SWITCH, INPUT_PULLUP);
-  attachInterrupt(GPIO_SWITCH, turnOn, FALLING);
 
   adc1_config_channel_atten(ADC_TEMP_READING, ADC_ATTEN_DB_0);
+  adc1_config_channel_atten(ADC_VOLTAGE_READING, ADC_ATTEN_DB_0);
+  adc1_config_channel_atten(ADC_CURRENT_READING, ADC_ATTEN_DB_0);
+  adc1_config_channel_atten(ADC_POWER_REFERNECE, ADC_ATTEN_DB_0);
 
   pid.SetSampleTime(1000);
   pid.SetOutputLimits(0, 100);
 
+  uint16_t voltages[100] = {};
+  uint16_t currents[100] = {};
+
   while(true){
+    // double aggregatedPower = 0;
+    //
+    // noInterrupts();
+    // for (size_t i = 0; i < 1000; i++) {
+    //   double voltage = adcToVoltage(adc1_get_raw(ADC_VOLTAGE_READING), 0);
+    //   double current = adcToVoltage(adc1_get_raw(ADC_CURRENT_READING), 0);
+    //   double reference = adcToVoltage(adc1_get_raw(ADC_POWER_REFERNECE), 0);
+    //
+    //   aggregatedPower += (voltage - reference) * (current - reference);
+    // }
+    // interrupts();
+    //
+    // power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
+
+    if (running == 0 && digitalRead(GPIO_SWITCH) == HIGH) {
+      turnOn();
+    } else if (running == 1 && digitalRead(GPIO_SWITCH) == LOW) {
+      turnOff();
+    }
+
+    if(running == 1 && pid.Compute()){
+      input = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING), 0));
+      setpoint = getCurrentSetpoint(getElapsedMinutes());
+    }
   }
 }
 
