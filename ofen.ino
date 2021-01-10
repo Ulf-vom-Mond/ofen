@@ -24,9 +24,9 @@
 #define POINT_50 400
 #define ADJUST_TEMPERATURE_THRESHHOLD 50
 
-#define GPIO_LEFT   25
-#define GPIO_MIDDLE 26
-#define GPIO_RIGHT  27
+#define GPIO_LEFT   21
+#define GPIO_MIDDLE 19
+#define GPIO_RIGHT  18
 #define GPIO_SWITCH 12
 #define GPIO_HEATER 13
 
@@ -73,6 +73,8 @@ int setpoints[SETPOINTS_COUNT][2] = {
   {-1, -1}
 };
 
+char dynamicDisplay[DISPLAY_LENGTH] = {};
+unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
 char staticDisplay[DISPLAY_LENGTH] = {};
 
 uint8_t running = 0;
@@ -491,16 +493,21 @@ void fillTable(char displayChars[DISPLAY_LENGTH], unsigned char invertDisplay[DI
   appendText(displayChars, "t\0\0/\0\0h\0\0", DISPLAY_WIDTH - 10, 5);
   appendText(displayChars, "T\0\0/\0\0°\0C\0\0", DISPLAY_WIDTH - 5, 5);
 
-  for (size_t i = 0; i < SETPOINTS_COUNT; i++) {
-    if(setpoints[i][0] == 0 && i != 0){
+  for (size_t i = 0; i < SETPOINTS_COUNT; i++){
+    Serial.println(i);
+    if(setpoints[i][0] == -1){
       break;
     }
+    Serial.println(i);
     if(setpoints[i][0] >= 0){
+      Serial.println("time");
       addTimeToDisplay((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
     }
     if(setpoints[i][1] >= 0){
+      Serial.println("temp");
       printInt(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
     }
+    Serial.println(i);
     if((int)(selected_field / 2) == i){
       if (selected_field % 2 == 0) {
         for (size_t j = 0; j < 5; j++) {
@@ -597,12 +604,15 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
   drawSeparationLines(staticDisplay);
 }
 
-void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
+void generateDynamicDisplay(){
+  Serial.println("please get the fuck printed!");
+
   char timeString[10] = {};
   formatTime(timeString, getElapsedMinutes());
   appendLargeText(dynamicDisplay, timeString, 0, 0);
   char tempString[14] = {};
-  sprintf(tempString, "%4doC/%4doC", voltageToTemp(adc1_get_raw(ADC_TEMP_READING)), getCurrentSetpoint(getElapsedMinutes()));
+  sprintf(tempString, "%4doC/%4doC", adc1_get_raw(ADC_TEMP_READING), getCurrentSetpoint(getElapsedMinutes()));
+
   appendLargeText(dynamicDisplay, tempString, 28, 0);
   char powerString[6] = {};
   sprintf(powerString, "%4dW", (int)power);
@@ -610,6 +620,8 @@ void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char i
 
   drawDiagram(dynamicDisplay);
   fillTable(dynamicDisplay, invertDisplay);
+
+  vTaskDelete(NULL);
 }
 
 void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
@@ -801,9 +813,16 @@ void setup() {
   server.begin();
   Serial.println("Server started");
 
-  xTaskCreatePinnedToCore((TaskFunction_t)core2, "core2Task", 20000, NULL, 0, NULL, 0);
+  //xTaskCreatePinnedToCore((TaskFunction_t)core2, "core2Task", 20000, NULL, 1, NULL, 0);
 
   generateStaticDisplay(staticDisplay);
+}
+
+void test() {
+  while (1) {
+    Serial.println("kljsriogj,.stgks");
+  }
+
 }
 
 void loop(){
@@ -819,11 +838,10 @@ void loop(){
       }
     }
   }
-  char dynamicDisplay[DISPLAY_LENGTH] = {};
-  unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
+xTaskCreate((TaskFunction_t)generateDynamicDisplay, "genDynDisplay", 113500, NULL, 10, NULL);
 
-  generateDynamicDisplay(dynamicDisplay, invertDisplay);
+delay(500);
   processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
 
-  delay(50);
+
 }
