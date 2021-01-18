@@ -11,3 +11,5 @@ test.exe
 test.c
 test
 build/*
+arduino.map
+CMakeLists.txt

@@ -6,6 +6,8 @@
 #include "driver/timer.h"
 #include "freertos/task.h"
 #include <PID_v1.h>
+#include "esp_task_wdt.h"
+#include "soc/rtc_wdt.h"
 
 #define MAX_CLIENTS 5
 
@@ -73,8 +75,6 @@ int setpoints[SETPOINTS_COUNT][2] = {
   {-1, -1}
 };
 
-char dynamicDisplay[DISPLAY_LENGTH] = {};
-unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
 char staticDisplay[DISPLAY_LENGTH] = {};
 
 uint8_t running = 0;
@@ -89,41 +89,50 @@ void IRAM_ATTR middle_down();
 void IRAM_ATTR middle_up();
 
 int adjustRotaryValue(){
-  int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
+  //int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
+  int speed = 10;
   if(speed < ADJUST_TEMPERATURE_THRESHHOLD){
     return 1;
   }
   return pow(((double)speed - ADJUST_TEMPERATURE_THRESHHOLD) / (POINT_50 - ADJUST_TEMPERATURE_THRESHHOLD), 2) * 49 + 1;
 }
 
-void adjustSetpoint(int adjustment){
+void adjustSetpoint(int *multiplier){
+  int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
+  int adjustment = 1;
+  if(speed >= ADJUST_TEMPERATURE_THRESHHOLD){
+    adjustment = *multiplier * (pow(((double)speed - ADJUST_TEMPERATURE_THRESHHOLD) / (POINT_50 - ADJUST_TEMPERATURE_THRESHHOLD), 2) * 49 + 1);
+  }
+
   setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustment;
   if(selected_field % 2 == 0){
     if (selected_field > 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] < setpoints[(int)(selected_field / 2) - 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) - 1][selected_field % 2];
-      return;
+      vTaskDelete(NULL);
     } else if (selected_field < SETPOINTS_COUNT * 2 - 2 && setpoints[(int)(selected_field / 2) + 1][selected_field % 2] != -1 && setpoints[(int)(selected_field / 2)][selected_field % 2] > setpoints[(int)(selected_field / 2) + 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) + 1][selected_field % 2];
-      return;
+      vTaskDelete(NULL);
     } else if (setpoints[(int)(selected_field / 2)][selected_field % 2] > 99 * 60 + 59) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = 99 * 60 + 59;
-      return;
+      vTaskDelete(NULL);
     }
   }
   if(setpoints[(int)(selected_field / 2)][selected_field % 2] < 0){
     setpoints[(int)(selected_field / 2)][selected_field % 2] = 0;
-    return;
+    vTaskDelete(NULL);
   }
   if (selected_field % 2 != 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] > 1300) {
     setpoints[(int)(selected_field / 2)][selected_field % 2] = 1300;
   }
+  vTaskDelete(NULL);
 }
 
 void IRAM_ATTR coilA(){
   if(rotary == 0){
     rotary += 1;
   }else{
-    adjustSetpoint(adjustRotaryValue());
+    int multiplier = 1;
+    xTaskCreate((TaskFunction_t)adjustSetpoint, "adjustSetpoint", 10000, &multiplier, 5, NULL);
   }
   attachInterrupt(GPIO_COIL_A, coilAReset, FALLING);
 }
@@ -132,7 +141,8 @@ void IRAM_ATTR coilB(){
   if(rotary == 0){
     rotary += 1;
   }else{
-    adjustSetpoint(-adjustRotaryValue());
+    int multiplier = -1;
+    xTaskCreate((TaskFunction_t)adjustSetpoint, "adjustSetpoint", 10000, &multiplier, 5, NULL);
   }
   attachInterrupt(GPIO_COIL_B, coilBReset, FALLING);
 }
@@ -494,20 +504,15 @@ void fillTable(char displayChars[DISPLAY_LENGTH], unsigned char invertDisplay[DI
   appendText(displayChars, "T\0\0/\0\0°\0C\0\0", DISPLAY_WIDTH - 5, 5);
 
   for (size_t i = 0; i < SETPOINTS_COUNT; i++){
-    Serial.println(i);
     if(setpoints[i][0] == -1){
       break;
     }
-    Serial.println(i);
     if(setpoints[i][0] >= 0){
-      Serial.println("time");
       addTimeToDisplay((char*)positionToPointer(displayChars, DISPLAY_WIDTH - 11, 7 + i), setpoints[i][0]);
     }
     if(setpoints[i][1] >= 0){
-      Serial.println("temp");
       printInt(displayChars, DISPLAY_WIDTH - 2, 7 + i, setpoints[i][1]);
     }
-    Serial.println(i);
     if((int)(selected_field / 2) == i){
       if (selected_field % 2 == 0) {
         for (size_t j = 0; j < 5; j++) {
@@ -539,7 +544,7 @@ void initializeClient(WiFiClient client){
   client.print("\u001b[0m\u001b[?25l\u001b[3J\u001b[1;1H"); //reset all graphic settings (SGR parameters), hide cursor, erase display, go to top left corner of display
 }
 
-char* letterToPattern(char letter){ //x, y and 3 chars for unicode
+char* letterToPattern(char letter){
   // '━': \u2501, '┃': \u2503, '╱': \u2571, '╲': \u2572,
   // '╸': \u2578, '╹': \u2579, '╺': \u257A, '╻': \u257B
   // '┏': \u250F, '┓': \u2513, '┗': \u2517, '┛': \u251B,
@@ -594,6 +599,9 @@ char* letterToPattern(char letter){ //x, y and 3 chars for unicode
     case 'W':
       pattern = "╻ \0\0╻┃┃┃┗┻┛";
       break;
+    case '-':
+      pattern = " \0\0 \0\0 \0\0╺━╸ \0\0 \0\0 \0\0";
+      break;
     default:
       pattern = " \0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0 \0\0";
   }
@@ -604,24 +612,27 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
   drawSeparationLines(staticDisplay);
 }
 
-void generateDynamicDisplay(){
-  Serial.println("please get the fuck printed!");
+void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
+  Serial.print("dyndisp: ");
+  Serial.println(heap_caps_get_largest_free_block(0));
 
+  fillTable(dynamicDisplay, invertDisplay);
+  drawDiagram(dynamicDisplay);
   char timeString[10] = {};
   formatTime(timeString, getElapsedMinutes());
   appendLargeText(dynamicDisplay, timeString, 0, 0);
-  char tempString[14] = {};
-  sprintf(tempString, "%4doC/%4doC", adc1_get_raw(ADC_TEMP_READING), getCurrentSetpoint(getElapsedMinutes()));
-
+  char tempString[15] = {};
+  int temp = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING), 0));
+  if(temp > 9999){
+    sprintf(tempString, "----oC/%4doC", getCurrentSetpoint(getElapsedMinutes()));
+  }else {
+    sprintf(tempString, "%4doC/%4doC", temp, getCurrentSetpoint(getElapsedMinutes()));
+  }
   appendLargeText(dynamicDisplay, tempString, 28, 0);
   char powerString[6] = {};
   sprintf(powerString, "%4dW", (int)power);
   appendLargeText(dynamicDisplay, powerString, 68, 0);
 
-  drawDiagram(dynamicDisplay);
-  fillTable(dynamicDisplay, invertDisplay);
-
-  vTaskDelete(NULL);
 }
 
 void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
@@ -727,7 +738,7 @@ void turnOff(){
   timer_pause(TIMER_GROUP_0, TIMER_0);
 }
 
-void core2(){
+void core1(){
   pinMode(GPIO_HEATER, OUTPUT);
   const timer_config_t pwmTimer = {
     .alarm_en = TIMER_ALARM_EN,
@@ -756,23 +767,21 @@ void core2(){
   uint16_t currents[100] = {};
 
   while(true){
-    // double aggregatedPower = 0;
-    //
-    // noInterrupts();
-    // for (size_t i = 0; i < 1000; i++) {
-    //   double voltage = adcToVoltage(adc1_get_raw(ADC_VOLTAGE_READING), 0);
-    //   double current = adcToVoltage(adc1_get_raw(ADC_CURRENT_READING), 0);
-    //   double reference = adcToVoltage(adc1_get_raw(ADC_POWER_REFERNECE), 0);
-    //
-    //   aggregatedPower += (voltage - reference) * (current - reference);
-    // }
-    // interrupts();
-    //
-    // power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
+    double aggregatedPower = 0;
 
-    if (running == 0 && digitalRead(GPIO_SWITCH) == HIGH) {
+    for (size_t i = 0; i < 1000; i++) {
+      double voltage = adcToVoltage(adc1_get_raw(ADC_VOLTAGE_READING), 0);
+      double current = adcToVoltage(adc1_get_raw(ADC_CURRENT_READING), 0);
+      double reference = adcToVoltage(adc1_get_raw(ADC_POWER_REFERNECE), 0);
+
+      aggregatedPower += (voltage - reference) * (current - reference);
+    }
+
+    power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
+
+    if (running == 0 && digitalRead(GPIO_SWITCH) == LOW) {
       turnOn();
-    } else if (running == 1 && digitalRead(GPIO_SWITCH) == LOW) {
+    } else if (running == 1 && digitalRead(GPIO_SWITCH) == HIGH) {
       turnOff();
     }
 
@@ -783,8 +792,42 @@ void core2(){
   }
 }
 
+void clientManager(){
+  Serial.println("clientManager");
+
+  WiFiClient newClient = server.available();   // listen for incoming clients
+
+  if(newClient){
+    for (int i=0 ; i<MAX_CLIENTS ; i++) {
+      if (clients[i] == NULL) {
+          clients[i] = new WiFiClient(newClient);
+          initializeClient(newClient);
+          break;
+      }
+    }
+  }
+}
+
+void core0() {
+  generateStaticDisplay(staticDisplay);
+
+  while (true) {
+    Serial.println("doin shit n stuff");
+
+    clientManager();
+
+    char dynamicDisplay[DISPLAY_LENGTH] = {};
+    unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8] = {};
+    generateDynamicDisplay(dynamicDisplay, invertDisplay);
+    processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
+    delay(50);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
+  Serial.println(heap_caps_get_largest_free_block(0));
+  Serial.println(heap_caps_get_free_size(0));
 
   pinMode(GPIO_COIL_A, INPUT);
   pinMode(GPIO_COIL_B, INPUT);
@@ -813,35 +856,13 @@ void setup() {
   server.begin();
   Serial.println("Server started");
 
-  //xTaskCreatePinnedToCore((TaskFunction_t)core2, "core2Task", 20000, NULL, 1, NULL, 0);
-
-  generateStaticDisplay(staticDisplay);
-}
-
-void test() {
-  while (1) {
-    Serial.println("kljsriogj,.stgks");
-  }
-
+  Serial.println(heap_caps_get_largest_free_block(0));
+  xTaskCreatePinnedToCore((TaskFunction_t)core0, "core0Task", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), NULL, 10, NULL, 0);
+  Serial.println(heap_caps_get_largest_free_block(0));
+  xTaskCreatePinnedToCore((TaskFunction_t)core1, "core1Task", 10000, NULL, 0, NULL, 1);
+  Serial.println(heap_caps_get_largest_free_block(0));
 }
 
 void loop(){
-  unsigned long loopTime = micros();
-  WiFiClient newClient = server.available();   // listen for incoming clients
-
-  if(newClient){
-    for (int i=0 ; i<MAX_CLIENTS ; i++) {
-      if (clients[i] == NULL) {
-          clients[i] = new WiFiClient(newClient);
-          initializeClient(newClient);
-          break;
-      }
-    }
-  }
-xTaskCreate((TaskFunction_t)generateDynamicDisplay, "genDynDisplay", 113500, NULL, 10, NULL);
-
-delay(500);
-  processDisplay(staticDisplay, dynamicDisplay, invertDisplay);
-
-
+  vTaskDelete(NULL);
 }
