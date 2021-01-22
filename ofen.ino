@@ -38,7 +38,7 @@
 #define ORIGIN_X 4
 #define ORIGIN_Y DISPLAY_HEIGHT - 2
 
-#define LONG_PRESS 300
+#define LONG_PRESS 400
 
 #define VOLTAGE_MULTIPLIER 935
 #define CURRENT_MULTIPLIER 50
@@ -59,6 +59,7 @@ int rotary = 0;
 int selected_field = 0;
 
 unsigned long lastMiddlePress = millis();
+int deletedSetpoints = 0;
 
 int setpoints[SETPOINTS_COUNT][2] = {
   {0,   0},
@@ -77,20 +78,27 @@ int setpoints[SETPOINTS_COUNT][2] = {
 
 char staticDisplay[DISPLAY_LENGTH] = {};
 
-uint8_t running = 0;
 unsigned long runningSince = 0;
+
+struct buttonStates{
+  unsigned int left        : 1;
+  unsigned int middle      : 1;
+  unsigned int right       : 1;
+  unsigned int onOffSwitch : 1;
+} buttonStates = {
+  .left   = 0,
+  .middle = 0,
+  .right  = 0,
+  .onOffSwitch = 0
+};
 
 double power = 0;
 
 void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
 
-void IRAM_ATTR middle_down();
-void IRAM_ATTR middle_up();
-
 int adjustRotaryValue(){
-  //int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
-  int speed = 10;
+  int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
   if(speed < ADJUST_TEMPERATURE_THRESHHOLD){
     return 1;
   }
@@ -105,6 +113,7 @@ void adjustSetpoint(int *multiplier){
   }
 
   setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustment;
+//  Serial.println(setpoints[(int)(selected_field / 2)][selected_field % 2]);
   if(selected_field % 2 == 0){
     if (selected_field > 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] < setpoints[(int)(selected_field / 2) - 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) - 1][selected_field % 2];
@@ -157,17 +166,6 @@ void IRAM_ATTR coilBReset(){
   attachInterrupt(GPIO_COIL_B, coilB, RISING);
 }
 
-void IRAM_ATTR left(){
-  if(selected_field > 0){
-    selected_field--;
-  }
-}
-
-void IRAM_ATTR middle_down(){
-  lastMiddlePress = millis();
-  attachInterrupt(GPIO_MIDDLE, middle_up, RISING);
-}
-
 void insertSetpoint(int position, int lastMiddlePress, int temp){
   if(setpoints[position][0] != -1){
     insertSetpoint(position + 1, setpoints[position][0], setpoints[position][1]);
@@ -187,27 +185,13 @@ void deleteSetpoint(int position){
       deleteSetpoint(position + 1);
     }
   }
-}
-
-void IRAM_ATTR middle_up(){
-  if(millis() - lastMiddlePress < LONG_PRESS && setpoints[SETPOINTS_COUNT - 1][0] == -1){
-    int position = (int)(selected_field / 2);
-    insertSetpoint(position, setpoints[position][0], setpoints[position][1]);
-  }
-  if(millis() - lastMiddlePress > LONG_PRESS && setpoints[2][0] != -1) {
-    deleteSetpoint((int)(selected_field / 2));
-  }
-  attachInterrupt(GPIO_MIDDLE, middle_down, FALLING);
-}
-
-void IRAM_ATTR right(){
-  if (setpoints[(int)((selected_field + 1) / 2)][0] != -1) {
-    selected_field++;
+  while (setpoints[(int)(selected_field / 2)][selected_field % 2] == -1) {
+    selected_field--;
   }
 }
 
 double getElapsedMinutes(){
-  if(running == 1){
+  if(buttonStates.onOffSwitch == 1){
     return (millis() - runningSince) / 1000.0 / 60.0;
   }else{
     return 0;
@@ -215,7 +199,7 @@ double getElapsedMinutes(){
 }
 
 int getCurrentSetpoint(double minutesRunning){
-  if(running == 1){
+  if(buttonStates.onOffSwitch == 1){
     int lastSetpoint = 0;
     while(lastSetpoint <= SETPOINTS_COUNT - 1 && setpoints[lastSetpoint + 1][0] != -1 && setpoints[lastSetpoint + 1][0] < minutesRunning) {
       lastSetpoint++;
@@ -401,9 +385,9 @@ int getDigitCount(int num){
 
 void printInt(char *str, int x, int y, int num){
   int rest = num / 10;
-  int digit = ((num / 10.0) - rest) * 10;
-  char numString[1] = {};
-  sprintf(numString, "%d", (int)digit);
+  double digit = ((num / 10.0) - rest) * 10.0;
+  char numString[2] = {};
+  sprintf(numString, "%f", digit);
   memcpy(positionToPointer(str, x, y), numString, 1);
   if(rest != 0){
     printInt(str, x - 1, y, rest);
@@ -475,7 +459,6 @@ void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
       }
     }
   }
-
 }
 
 void drawDiagram(char displayChars[DISPLAY_LENGTH]){
@@ -613,9 +596,6 @@ void generateStaticDisplay(char staticDisplay[DISPLAY_LENGTH]){
 }
 
 void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char invertDisplay[DISPLAY_WIDTH * DISPLAY_HEIGHT / 8]){
-  Serial.print("dyndisp: ");
-  Serial.println(heap_caps_get_largest_free_block(0));
-
   fillTable(dynamicDisplay, invertDisplay);
   drawDiagram(dynamicDisplay);
   char timeString[10] = {};
@@ -650,7 +630,9 @@ void processDisplay(char staticDisplay[DISPLAY_LENGTH], char dynamicDisplay[DISP
   }
 
   int displayCharsLength = DISPLAY_LENGTH + DISPLAY_HEIGHT - 1 + invertedRegionCounter * (sizeof(invert) + sizeof(reset));
+
   char *displayChars = (char*)malloc(displayCharsLength + 20);
+
   memset(displayChars, '\0', displayCharsLength);
   strcpy(displayChars, "\u001b[0m\u001b[?25l\u001b[3J\u001b[1;1H");
   int displayCharIterator = 20;                                   // merging staticDisplay and dynamicDisplay
@@ -726,16 +708,84 @@ int voltageToTemp(double voltage){
 }
 
 void turnOn(){
-  running = 1;
   runningSince = millis();
   pid.SetMode(AUTOMATIC);
   timer_start(TIMER_GROUP_0, TIMER_0);
 }
 
 void turnOff(){
-  running = 0;
   pid.SetMode(MANUAL);
   timer_pause(TIMER_GROUP_0, TIMER_0);
+}
+
+void left(){
+  if(selected_field > 0){
+    selected_field--;
+  }
+}
+
+void middle_down(){
+  lastMiddlePress = millis();
+  deletedSetpoints = 0;
+}
+
+void middle_up(){
+  if(millis() - lastMiddlePress < LONG_PRESS && setpoints[SETPOINTS_COUNT - 1][0] == -1){
+    int position = (int)(selected_field / 2);
+    insertSetpoint(position, setpoints[position][0], setpoints[position][1]);
+  }
+}
+
+void middle_pressed(){
+  Serial.println((millis() - lastMiddlePress) / LONG_PRESS);
+  if((millis() - lastMiddlePress) / LONG_PRESS > deletedSetpoints && setpoints[1][0] != -1){
+    deletedSetpoints++;
+    deleteSetpoint((int)(selected_field / 2));
+  }
+}
+
+void right(){
+  if (setpoints[(int)((selected_field + 1) / 2)][0] != -1) {
+    selected_field++;
+  }
+}
+
+void buttonHandler(){
+
+  if (buttonStates.left == 1 && digitalRead(GPIO_LEFT) == HIGH) {
+    buttonStates.left = 0;
+  } else if (buttonStates.left == 0 && digitalRead(GPIO_LEFT) == LOW) {
+    left();
+    buttonStates.left = 1;
+  }
+
+  if (buttonStates.middle == 1 && digitalRead(GPIO_MIDDLE) == HIGH) {
+    middle_up();
+    buttonStates.middle = 0;
+  } else if (buttonStates.middle == 0 && digitalRead(GPIO_MIDDLE) == LOW) {
+    middle_down();
+    buttonStates.middle = 1;
+  }
+
+  if(digitalRead(GPIO_MIDDLE) == LOW){
+    middle_pressed();
+  }
+
+  if (buttonStates.right == 1 && digitalRead(GPIO_RIGHT) == HIGH) {
+    buttonStates.right = 0;
+  } else if (buttonStates.right == 0 && digitalRead(GPIO_RIGHT) == LOW) {
+    right();
+    buttonStates.right = 1;
+  }
+
+  if (buttonStates.onOffSwitch == 1 && digitalRead(GPIO_SWITCH) == LOW) {
+    turnOn();
+    buttonStates.onOffSwitch = 0;
+  } else if (buttonStates.onOffSwitch == 0 && digitalRead(GPIO_SWITCH) == HIGH) {
+    turnOff();
+    buttonStates.onOffSwitch = 1;
+  }
+
 }
 
 void core1(){
@@ -770,6 +820,8 @@ void core1(){
     double aggregatedPower = 0;
 
     for (size_t i = 0; i < 1000; i++) {
+      buttonHandler();
+
       double voltage = adcToVoltage(adc1_get_raw(ADC_VOLTAGE_READING), 0);
       double current = adcToVoltage(adc1_get_raw(ADC_CURRENT_READING), 0);
       double reference = adcToVoltage(adc1_get_raw(ADC_POWER_REFERNECE), 0);
@@ -779,13 +831,7 @@ void core1(){
 
     power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
 
-    if (running == 0 && digitalRead(GPIO_SWITCH) == LOW) {
-      turnOn();
-    } else if (running == 1 && digitalRead(GPIO_SWITCH) == HIGH) {
-      turnOff();
-    }
-
-    if(running == 1 && pid.Compute()){
+    if(buttonStates.onOffSwitch == 1 && pid.Compute()){
       input = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING), 0));
       setpoint = getCurrentSetpoint(getElapsedMinutes());
     }
@@ -793,8 +839,6 @@ void core1(){
 }
 
 void clientManager(){
-  Serial.println("clientManager");
-
   WiFiClient newClient = server.available();   // listen for incoming clients
 
   if(newClient){
@@ -812,8 +856,6 @@ void core0() {
   generateStaticDisplay(staticDisplay);
 
   while (true) {
-    Serial.println("doin shit n stuff");
-
     clientManager();
 
     char dynamicDisplay[DISPLAY_LENGTH] = {};
@@ -826,8 +868,6 @@ void core0() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println(heap_caps_get_largest_free_block(0));
-  Serial.println(heap_caps_get_free_size(0));
 
   pinMode(GPIO_COIL_A, INPUT);
   pinMode(GPIO_COIL_B, INPUT);
@@ -837,15 +877,11 @@ void setup() {
   pinMode(GPIO_LEFT,   INPUT_PULLUP);
   pinMode(GPIO_MIDDLE, INPUT_PULLUP);
   pinMode(GPIO_RIGHT,  INPUT_PULLUP);
-  attachInterrupt(GPIO_LEFT,   left,   FALLING);
-  attachInterrupt(GPIO_MIDDLE, middle_down, FALLING);
-  attachInterrupt(GPIO_RIGHT,  right,  FALLING);
 
   adc1_config_width(ADC_WIDTH_BIT_12);
   adc1_config_channel_atten(ADC_SPEED_READING, ADC_ATTEN_DB_11);
   adc1_config_channel_atten(ADC_SPEED_REFERENCE, ADC_ATTEN_DB_11);
 
-  Serial.println();
   Serial.println("Configuring access point...");
 
   // You can remove the password parameter if you want the AP to be open.
@@ -856,11 +892,8 @@ void setup() {
   server.begin();
   Serial.println("Server started");
 
-  Serial.println(heap_caps_get_largest_free_block(0));
-  xTaskCreatePinnedToCore((TaskFunction_t)core0, "core0Task", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), NULL, 10, NULL, 0);
-  Serial.println(heap_caps_get_largest_free_block(0));
-  xTaskCreatePinnedToCore((TaskFunction_t)core1, "core1Task", 10000, NULL, 0, NULL, 1);
-  Serial.println(heap_caps_get_largest_free_block(0));
+  xTaskCreatePinnedToCore((TaskFunction_t)core0, "core0Task", 50000, NULL, 10, NULL, 0);
+  xTaskCreatePinnedToCore((TaskFunction_t)core1, "core1Task", 20000, NULL, 0, NULL, 1);
 }
 
 void loop(){
