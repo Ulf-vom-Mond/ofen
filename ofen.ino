@@ -6,6 +6,7 @@
 #include "driver/timer.h"
 #include "freertos/task.h"
 #include <PID_v1.h>
+#include <PID_AutoTune_v0.h>
 #include "esp_task_wdt.h"
 #include "soc/rtc_wdt.h"
 #include "nvs_flash.h"
@@ -679,7 +680,13 @@ uint8_t dutycycleCounter = 0;
 double input = 0;
 double output = 0;
 double setpoint = 0;
-PID pid(&input, &output, &setpoint, 2, 5, 1, DIRECT);
+double Kp = 0;
+double Ki = 0;
+double Kd = 0;
+PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+
+PID_ATune PIDAutotune(&input, &output);
+uint8_t PIDAutotuning = 0;
 
 void IRAM_ATTR pwmISR(void *param){
   TIMERG0.int_clr_timers.t0 = 1;
@@ -792,6 +799,103 @@ void buttonHandler(){
 
 }
 
+void readPIDTunings(){
+  nvs_handle nvsHandle;
+  nvs_open("nvs", NVS_READWRITE, &nvsHandle);
+
+  uint64_t intKp;
+  uint64_t intKi;
+  uint64_t intKd;
+
+  nvs_get_u64(nvsHandle, "Kp", &intKp);
+  nvs_get_u64(nvsHandle, "Ki", &intKi);
+  nvs_get_u64(nvsHandle, "Kd", &intKd);
+
+  Kp = intKp / 1000000.0;
+  Ki = intKi / 1000000.0;
+  Kd = intKd / 1000000.0;
+
+  nvs_commit(nvsHandle);
+  nvs_close(nvsHandle);
+}
+
+void updatePIDTunings(){
+  nvs_handle nvsHandle;
+  nvs_open("nvs", NVS_READWRITE, &nvsHandle);
+
+  uint64_t intKp;
+  uint64_t intKi;
+  uint64_t intKd;
+
+  uint64_t timerValue = 17;
+  timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
+
+  while (timerValue >= 15) {
+    timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
+  }
+
+  nvs_get_u64(nvsHandle, "Kp", &intKp);
+  nvs_get_u64(nvsHandle, "Ki", &intKi);
+  nvs_get_u64(nvsHandle, "Kd", &intKd);
+
+  if (intKp / 1000000.0 != Kp) {
+    nvs_set_u64(nvsHandle, "Kp", (int)(Kp * 1000000));
+  }
+  if (intKi / 1000000.0 != Ki) {
+    nvs_set_u64(nvsHandle, "Ki", (int)(Ki * 1000000));
+  }
+  if (intKd / 1000000.0 != Kd) {
+    nvs_set_u64(nvsHandle, "Kd", (int)(Kd * 1000000));
+  }
+
+  nvs_commit(nvsHandle);
+  nvs_close(nvsHandle);
+}
+
+void printPIDTunings(){
+  Serial.print("Kp = ");
+  Serial.println(Kp);
+  Serial.print("Ki = ");
+  Serial.println(Ki);
+  Serial.print("Kd = ");
+  Serial.println(Kd);
+  Serial.println("");
+}
+
+void commandHandler(char command[]){
+  if (strcmp(command, "help") == 0) {
+    Serial.println("Available commands:");
+    Serial.println("help              - displays this help dialog");
+    Serial.println("echoPIDTunings    - print the Kp, Ki and Kd values");
+    Serial.println("PIDAutotune       - conducts a PID autotune. Oven should be heated to a stable temperature before doing that. To store the returned Kp, Ki and Kd values permanently, use 'savePIDTunings'");
+    Serial.println("cancelPIDAutotune - aborts the PID autotune");
+    Serial.println("savePIDTunings    - stores the Kp, Ki and Kp from the latest autotune in non-volatile storage");
+    Serial.println("");
+  } else if (strcmp(command, "echoPIDTunings") == 0) {
+    printPIDTunings();
+  } else if (strcmp(command, "PIDAutotune") == 0) {
+    Serial.println("Starting PID autotune");
+    pid.SetMode(MANUAL);
+    PIDAutotune.SetOutputStep(50);
+    PIDAutotune.SetControlType(1);
+    PIDAutotune.SetNoiseBand(5);
+    PIDAutotune.SetLookbackSec(10);
+    PIDAutotuning = 1;
+    Serial.println("");
+  } else if (strcmp(command, "cancelPIDAutotune") == 0) {
+    Serial.println("");
+    Serial.println("Canceling PID autotune");
+    pid.SetMode(AUTOMATIC);
+    PIDAutotuning = 0;
+    PIDAutotune.Cancel();
+    Serial.println("");
+  } else if (strcmp(command, "savePIDTunings") == 0) {
+    updatePIDTunings();
+    Serial.println("saved PID tunings!");
+    Serial.println("");
+  }
+}
+
 void readSetpointSave(){
   nvs_handle nvsHandle;
   nvs_open("nvs", NVS_READWRITE, &nvsHandle);
@@ -799,8 +903,6 @@ void readSetpointSave(){
   for (size_t i = 0; i < SETPOINTS_COUNT * 2; i++) {
     char key[13] = {};
     sprintf(key, "setpoint_%d", i);
-
-    int16_t value = -1;
 
     if (nvs_get_i16(nvsHandle, key, &setpoints[(int)(i / 2)][i % 2]) != ESP_OK) {
       break;
@@ -828,13 +930,11 @@ void updateSetpointsSave(){
 
       uint64_t timerValue = 17;
       timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
-      accessingFlash = 1;
       while (timerValue >= 15) {
         timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
       }
 
       nvs_get_i16(nvsHandle, key, &currentValue);
-      accessingFlash = 0;
 
       if (currentValue != setpoints[(int)(i / 2)][i % 2]) {
         nvs_set_i16(nvsHandle, key, setpoints[(int)(i / 2)][i % 2]);
@@ -899,6 +999,23 @@ void core1(){
 
     if (millis() - lastSetpointsChange > SETPOINT_SAVE_INTERVAL) {
       updateSetpointsSave();
+    }
+
+    int availableBytes = Serial.available();
+    if (availableBytes > 0) {
+      char serialIn[availableBytes + 1] = {};
+      Serial.readBytes(serialIn, availableBytes);
+      commandHandler(serialIn);
+    }
+
+    if(PIDAutotuning && Serial.print(".") && PIDAutotune.Runtime()){
+      Serial.println("");
+      PIDAutotuning = 0;
+      Kp = PIDAutotune.GetKp();
+      Ki = PIDAutotune.GetKi();
+      Kd = PIDAutotune.GetKd();
+      printPIDTunings();
+      pid.SetMode(AUTOMATIC);
     }
   }
 }
