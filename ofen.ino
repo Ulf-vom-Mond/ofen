@@ -8,6 +8,8 @@
 #include <PID_v1.h>
 #include "esp_task_wdt.h"
 #include "soc/rtc_wdt.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 #define MAX_CLIENTS 5
 
@@ -33,6 +35,7 @@
 #define GPIO_HEATER 13
 
 #define SETPOINTS_COUNT 12
+#define SETPOINT_SAVE_INTERVAL 10000
 #define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
 #define TEMP_AXIS_LENGTH (DISPLAY_HEIGHT - 4 - 1)
 #define ORIGIN_X 4
@@ -54,14 +57,17 @@ const char *password = "duBrauchstKeinPasswort";
 
 WiFiServer server(80);
 
-int rotary = 0;
+volatile int rotary = 0;
 
 int selected_field = 0;
 
 unsigned long lastMiddlePress = millis();
 int deletedSetpoints = 0;
 
-int setpoints[SETPOINTS_COUNT][2] = {
+unsigned long lastSetpointsChange = millis();
+uint8_t setpointsSaved = 1;
+
+int16_t setpoints[SETPOINTS_COUNT][2] = {
   {0,   0},
   {1,  100},
   {2,  50},
@@ -94,16 +100,10 @@ struct buttonStates{
 
 double power = 0;
 
+volatile uint8_t accessingFlash = 0;
+
 void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
-
-int adjustRotaryValue(){
-  int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
-  if(speed < ADJUST_TEMPERATURE_THRESHHOLD){
-    return 1;
-  }
-  return pow(((double)speed - ADJUST_TEMPERATURE_THRESHHOLD) / (POINT_50 - ADJUST_TEMPERATURE_THRESHHOLD), 2) * 49 + 1;
-}
 
 void adjustSetpoint(int *multiplier){
   int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
@@ -113,26 +113,27 @@ void adjustSetpoint(int *multiplier){
   }
 
   setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustment;
-//  Serial.println(setpoints[(int)(selected_field / 2)][selected_field % 2]);
   if(selected_field % 2 == 0){
     if (selected_field > 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] < setpoints[(int)(selected_field / 2) - 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) - 1][selected_field % 2];
-      vTaskDelete(NULL);
     } else if (selected_field < SETPOINTS_COUNT * 2 - 2 && setpoints[(int)(selected_field / 2) + 1][selected_field % 2] != -1 && setpoints[(int)(selected_field / 2)][selected_field % 2] > setpoints[(int)(selected_field / 2) + 1][selected_field % 2]) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = setpoints[(int)(selected_field / 2) + 1][selected_field % 2];
-      vTaskDelete(NULL);
     } else if (setpoints[(int)(selected_field / 2)][selected_field % 2] > 99 * 60 + 59) {
       setpoints[(int)(selected_field / 2)][selected_field % 2] = 99 * 60 + 59;
-      vTaskDelete(NULL);
+    }
+  }else{
+    if (selected_field % 2 != 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] > 1300) {
+      setpoints[(int)(selected_field / 2)][selected_field % 2] = 1300;
     }
   }
+
   if(setpoints[(int)(selected_field / 2)][selected_field % 2] < 0){
     setpoints[(int)(selected_field / 2)][selected_field % 2] = 0;
-    vTaskDelete(NULL);
   }
-  if (selected_field % 2 != 0 && setpoints[(int)(selected_field / 2)][selected_field % 2] > 1300) {
-    setpoints[(int)(selected_field / 2)][selected_field % 2] = 1300;
-  }
+
+  lastSetpointsChange = millis();
+  setpointsSaved = 0;
+
   vTaskDelete(NULL);
 }
 
@@ -442,11 +443,14 @@ void drawGraph(char displayChars[DISPLAY_LENGTH], int maxTime, int maxTemp){
   for (int i = 0; i < TIME_AXIS_LENGTH - 1; i++) {
     int lastSetpoint = 0;
     float currentTime = i * (float)maxTime / (float)(TIME_AXIS_LENGTH - 1);
-    while(setpoints[lastSetpoint + 1][0] < currentTime && lastSetpoint < SETPOINTS_COUNT - 1) {
+    while(setpoints[lastSetpoint + 1][0] < currentTime && setpoints[lastSetpoint + 1][0] != -1 && lastSetpoint < SETPOINTS_COUNT - 1) {
       lastSetpoint++;
     }
     if(setpoints[lastSetpoint + 1][0] != setpoints[lastSetpoint][0]){
       float slope = (float)(setpoints[lastSetpoint + 1][1] - setpoints[lastSetpoint][1]) / (float)(setpoints[lastSetpoint + 1][0] - setpoints[lastSetpoint][0]);
+      if(setpoints[lastSetpoint + 1][0] == -1){
+        slope = 0;
+      }
       float temp = ((currentTime - setpoints[lastSetpoint][0]) * slope + setpoints[lastSetpoint][1]);
       float scaledTemp = temp * (TEMP_AXIS_LENGTH - 1) / (float)maxTemp;
       float scaledTempDecimals = scaledTemp - (int)scaledTemp;
@@ -679,6 +683,7 @@ PID pid(&input, &output, &setpoint, 2, 5, 1, DIRECT);
 
 void IRAM_ATTR pwmISR(void *param){
   TIMERG0.int_clr_timers.t0 = 1;
+  //Serial.println(accessingFlash);
   if(dutycycleCounter >= 100){
     digitalWrite(GPIO_HEATER, HIGH);
     dutycycleCounter -= 100;
@@ -737,7 +742,6 @@ void middle_up(){
 }
 
 void middle_pressed(){
-  Serial.println((millis() - lastMiddlePress) / LONG_PRESS);
   if((millis() - lastMiddlePress) / LONG_PRESS > deletedSetpoints && setpoints[1][0] != -1){
     deletedSetpoints++;
     deleteSetpoint((int)(selected_field / 2));
@@ -779,13 +783,68 @@ void buttonHandler(){
   }
 
   if (buttonStates.onOffSwitch == 1 && digitalRead(GPIO_SWITCH) == LOW) {
-    turnOn();
+    turnOff();
     buttonStates.onOffSwitch = 0;
   } else if (buttonStates.onOffSwitch == 0 && digitalRead(GPIO_SWITCH) == HIGH) {
-    turnOff();
+    turnOn();
     buttonStates.onOffSwitch = 1;
   }
 
+}
+
+void readSetpointSave(){
+  nvs_handle nvsHandle;
+  nvs_open("nvs", NVS_READWRITE, &nvsHandle);
+
+  for (size_t i = 0; i < SETPOINTS_COUNT * 2; i++) {
+    char key[13] = {};
+    sprintf(key, "setpoint_%d", i);
+
+    int16_t value = -1;
+
+    if (nvs_get_i16(nvsHandle, key, &setpoints[(int)(i / 2)][i % 2]) != ESP_OK) {
+      break;
+    }
+  }
+
+  nvs_commit(nvsHandle);
+  nvs_close(nvsHandle);
+}
+
+void updateSetpointsSave(){
+  if(setpointsSaved == 0){
+    nvs_handle nvsHandle;
+    nvs_open("nvs", NVS_READWRITE, &nvsHandle);
+
+    for (size_t i = 0; i < SETPOINTS_COUNT * 2; i++) {
+      if(setpoints[(int)(i / 2)][i % 2] == -1){
+        break;
+      }
+
+      char key[13] = {};
+      sprintf(key, "setpoint_%d", i);
+
+      int16_t currentValue = -1;
+
+      uint64_t timerValue = 17;
+      timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
+      accessingFlash = 1;
+      while (timerValue >= 15) {
+        timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
+      }
+
+      nvs_get_i16(nvsHandle, key, &currentValue);
+      accessingFlash = 0;
+
+      if (currentValue != setpoints[(int)(i / 2)][i % 2]) {
+        nvs_set_i16(nvsHandle, key, setpoints[(int)(i / 2)][i % 2]);
+      }
+
+    }
+    setpointsSaved = 1;
+    nvs_commit(nvsHandle);
+    nvs_close(nvsHandle);
+  }
 }
 
 void core1(){
@@ -809,6 +868,8 @@ void core1(){
   adc1_config_channel_atten(ADC_VOLTAGE_READING, ADC_ATTEN_DB_0);
   adc1_config_channel_atten(ADC_CURRENT_READING, ADC_ATTEN_DB_0);
   adc1_config_channel_atten(ADC_POWER_REFERNECE, ADC_ATTEN_DB_0);
+
+  readSetpointSave();
 
   pid.SetSampleTime(1000);
   pid.SetOutputLimits(0, 100);
@@ -834,6 +895,10 @@ void core1(){
     if(buttonStates.onOffSwitch == 1 && pid.Compute()){
       input = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING), 0));
       setpoint = getCurrentSetpoint(getElapsedMinutes());
+    }
+
+    if (millis() - lastSetpointsChange > SETPOINT_SAVE_INTERVAL) {
+      updateSetpointsSave();
     }
   }
 }
@@ -891,6 +956,12 @@ void setup() {
   Serial.println(myIP);
   server.begin();
   Serial.println("Server started");
+
+  if(nvs_flash_init() == ESP_OK){
+    Serial.println("NVS initialized successfully");
+  }else{
+    Serial.println("problem during NVS initialization");
+  }
 
   xTaskCreatePinnedToCore((TaskFunction_t)core0, "core0Task", 50000, NULL, 10, NULL, 0);
   xTaskCreatePinnedToCore((TaskFunction_t)core1, "core1Task", 20000, NULL, 0, NULL, 1);
