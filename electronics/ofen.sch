@@ -447,177 +447,81 @@ Wire Wire Line
 	2900 5500 4600 5500
 Connection ~ 4600 5500
 Wire Wire Line
-	5700 3000 7300 3000
+	2600 1600 2600 1500
 Wire Wire Line
-	5700 2900 7700 2900
+	2600 1500 1700 1500
 Wire Wire Line
-	5700 2800 8100 2800
-$Comp
-L Device:CP C5
-U 1 1 60027F36
-P 8100 3250
-F 0 "C5" H 8218 3296 50  0000 L CNN
-F 1 "1µ" H 8218 3205 50  0000 L CNN
-F 2 "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm" H 8138 3100 50  0001 C CNN
-F 3 "~" H 8100 3250 50  0001 C CNN
-	1    8100 3250
-	1    0    0    -1  
-$EndComp
-$Comp
-L Device:CP C4
-U 1 1 60029160
-P 7700 3250
-F 0 "C4" H 7818 3296 50  0000 L CNN
-F 1 "1µ" H 7818 3205 50  0000 L CNN
-F 2 "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm" H 7738 3100 50  0001 C CNN
-F 3 "~" H 7700 3250 50  0001 C CNN
-	1    7700 3250
-	1    0    0    -1  
-$EndComp
-$Comp
-L Device:CP C2
-U 1 1 60029E86
-P 7300 3250
-F 0 "C2" H 7418 3296 50  0000 L CNN
-F 1 "1µ" H 7418 3205 50  0000 L CNN
-F 2 "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm" H 7338 3100 50  0001 C CNN
-F 3 "~" H 7300 3250 50  0001 C CNN
-	1    7300 3250
-	1    0    0    -1  
-$EndComp
+	2200 1600 2200 1400
 Wire Wire Line
-	7300 3100 7300 3000
-Connection ~ 7300 3000
+	2200 1400 1700 1400
 Wire Wire Line
-	7300 3000 8200 3000
+	1800 1600 1800 1300
 Wire Wire Line
-	7700 3100 7700 2900
-Connection ~ 7700 2900
-Wire Wire Line
-	7700 2900 8200 2900
-Wire Wire Line
-	8100 3100 8100 2800
-Connection ~ 8100 2800
-Wire Wire Line
-	8100 2800 8200 2800
+	1800 1300 1700 1300
 $Comp
 L power:GND #PWR015
 U 1 1 60030B1D
-P 7300 3500
-F 0 "#PWR015" H 7300 3250 50  0001 C CNN
-F 1 "GND" H 7305 3327 50  0000 C CNN
-F 2 "" H 7300 3500 50  0001 C CNN
-F 3 "" H 7300 3500 50  0001 C CNN
-	1    7300 3500
-	1    0    0    -1  
+P 2600 2000
+F 0 "#PWR015" H 2600 1750 50  0001 C CNN
+F 1 "GND" H 2605 1827 50  0000 C CNN
+F 2 "" H 2600 2000 50  0001 C CNN
+F 3 "" H 2600 2000 50  0001 C CNN
+	1    2600 2000
+	-1   0    0    -1  
 $EndComp
 $Comp
 L power:GND #PWR018
 U 1 1 60031516
-P 7700 3500
-F 0 "#PWR018" H 7700 3250 50  0001 C CNN
-F 1 "GND" H 7705 3327 50  0000 C CNN
-F 2 "" H 7700 3500 50  0001 C CNN
-F 3 "" H 7700 3500 50  0001 C CNN
-	1    7700 3500
-	1    0    0    -1  
+P 2200 2000
+F 0 "#PWR018" H 2200 1750 50  0001 C CNN
+F 1 "GND" H 2205 1827 50  0000 C CNN
+F 2 "" H 2200 2000 50  0001 C CNN
+F 3 "" H 2200 2000 50  0001 C CNN
+	1    2200 2000
+	-1   0    0    -1  
 $EndComp
 $Comp
 L power:GND #PWR021
 U 1 1 60031896
-P 8100 3500
-F 0 "#PWR021" H 8100 3250 50  0001 C CNN
-F 1 "GND" H 8105 3327 50  0000 C CNN
-F 2 "" H 8100 3500 50  0001 C CNN
-F 3 "" H 8100 3500 50  0001 C CNN
-	1    8100 3500
-	1    0    0    -1  
+P 1800 2000
+F 0 "#PWR021" H 1800 1750 50  0001 C CNN
+F 1 "GND" H 1805 1827 50  0000 C CNN
+F 2 "" H 1800 2000 50  0001 C CNN
+F 3 "" H 1800 2000 50  0001 C CNN
+	1    1800 2000
+	-1   0    0    -1  
 $EndComp
 Wire Wire Line
-	8100 3500 8100 3400
+	1800 2000 1800 1900
 Wire Wire Line
-	7700 3500 7700 3400
+	2200 2000 2200 1900
 Wire Wire Line
-	7300 3500 7300 3400
+	2600 2000 2600 1900
 $Comp
 L power:GND #PWR022
 U 1 1 60037896
-P 8700 3500
-F 0 "#PWR022" H 8700 3250 50  0001 C CNN
-F 1 "GND" H 8705 3327 50  0000 C CNN
-F 2 "" H 8700 3500 50  0001 C CNN
-F 3 "" H 8700 3500 50  0001 C CNN
-	1    8700 3500
-	1    0    0    -1  
+P 1200 2000
+F 0 "#PWR022" H 1200 1750 50  0001 C CNN
+F 1 "GND" H 1205 1827 50  0000 C CNN
+F 2 "" H 1200 2000 50  0001 C CNN
+F 3 "" H 1200 2000 50  0001 C CNN
+	1    1200 2000
+	-1   0    0    -1  
 $EndComp
 Wire Wire Line
-	8700 3500 8700 3000
+	1200 2000 1200 1500
 Wire Wire Line
-	8700 3000 8600 3000
+	1200 1500 1300 1500
 Wire Wire Line
-	8700 3000 8700 2900
+	1200 1500 1200 1400
 Wire Wire Line
-	8700 2900 8600 2900
-Connection ~ 8700 3000
+	1200 1400 1300 1400
+Connection ~ 1200 1500
 Wire Wire Line
-	8700 2900 8700 2800
+	1200 1400 1200 1300
 Wire Wire Line
-	8700 2800 8600 2800
-Connection ~ 8700 2900
-$Comp
-L Switch:SW_SPST SW1
-U 1 1 60040B90
-P 7800 2600
-F 0 "SW1" H 7800 2835 50  0000 C CNN
-F 1 "SW_SPST" H 7800 2744 50  0000 C CNN
-F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 7800 2600 50  0001 C CNN
-F 3 "~" H 7800 2600 50  0001 C CNN
-	1    7800 2600
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	7600 2600 7500 2600
-$Comp
-L Device:CP C3
-U 1 1 600466D9
-P 7500 2350
-F 0 "C3" H 7382 2304 50  0000 R CNN
-F 1 "1µ" H 7382 2395 50  0000 R CNN
-F 2 "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm" H 7538 2200 50  0001 C CNN
-F 3 "~" H 7500 2350 50  0001 C CNN
-	1    7500 2350
-	1    0    0    1   
-$EndComp
-$Comp
-L power:GND #PWR016
-U 1 1 600477A6
-P 7500 2100
-F 0 "#PWR016" H 7500 1850 50  0001 C CNN
-F 1 "GND" H 7505 1927 50  0000 C CNN
-F 2 "" H 7500 2100 50  0001 C CNN
-F 3 "" H 7500 2100 50  0001 C CNN
-	1    7500 2100
-	1    0    0    1   
-$EndComp
-$Comp
-L power:GND #PWR020
-U 1 1 600486BE
-P 8100 2100
-F 0 "#PWR020" H 8100 1850 50  0001 C CNN
-F 1 "GND" H 8105 1927 50  0000 C CNN
-F 2 "" H 8100 2100 50  0001 C CNN
-F 3 "" H 8100 2100 50  0001 C CNN
-	1    8100 2100
-	1    0    0    1   
-$EndComp
-Wire Wire Line
-	7500 2500 7500 2600
-Wire Wire Line
-	7500 2200 7500 2100
-Wire Wire Line
-	8000 2600 8100 2600
-Wire Wire Line
-	8100 2600 8100 2100
+	1200 1300 1300 1300
+Connection ~ 1200 1400
 Wire Wire Line
 	2200 2300 3200 2300
 Connection ~ 3200 2300
@@ -817,7 +721,7 @@ U 1 1 6022EB07
 P 7800 1350
 F 0 "Q5" H 7929 1396 50  0000 L CNN
 F 1 "BTA16-600B" H 7929 1305 50  0000 L CNN
-F 2 "Package_TO_SOT_THT:TO-220-3_Horizontal_TabUp" H 8000 1275 50  0001 L CIN
+F 2 "Connector_Wire:SolderWire-0.75sqmm_1x03_P4.8mm_D1.25mm_OD2.3mm" H 8000 1275 50  0001 L CIN
 F 3 "https://www.st.com/resource/en/datasheet/bta16.pdf" H 7800 1350 50  0001 L CNN
 	1    7800 1350
 	1    0    0    -1  
@@ -910,17 +814,6 @@ Wire Wire Line
 	8400 1100 8600 1100
 Wire Wire Line
 	8600 1100 8600 1300
-$Comp
-L Connector_Generic:Conn_01x02 J5
-U 1 1 60285D32
-P 10800 900
-F 0 "J5" H 10880 892 50  0000 L CNN
-F 1 "AC" H 10880 801 50  0000 L CNN
-F 2 "TerminalBlock:TerminalBlock_Altech_AK300-3_P5.00mm" H 10800 900 50  0001 C CNN
-F 3 "~" H 10800 900 50  0001 C CNN
-	1    10800 900 
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
 	4700 2400 5700 2400
 Connection ~ 4700 2400
@@ -944,8 +837,6 @@ Wire Wire Line
 Wire Wire Line
 	6500 1300 6600 1300
 Wire Wire Line
-	10500 800  10000 800 
-Wire Wire Line
 	8000 800  8000 1100
 Connection ~ 8000 1100
 Wire Wire Line
@@ -953,10 +844,6 @@ Wire Wire Line
 Wire Wire Line
 	8600 1700 9100 1700
 Connection ~ 8600 1700
-Wire Wire Line
-	6200 1500 6200 2500
-Wire Wire Line
-	6200 2500 5700 2500
 $Comp
 L Device:Heater R20
 U 1 1 6031B0A5
@@ -966,7 +853,7 @@ F 1 "Heater" H 9370 1655 50  0000 L CNN
 F 2 "TerminalBlock:TerminalBlock_Altech_AK300-3_P5.00mm" V 9230 1700 50  0001 C CNN
 F 3 "~" H 9300 1700 50  0001 C CNN
 	1    9300 1700
-	0    1    1    0   
+	0    -1   -1   0   
 $EndComp
 $Comp
 L Device:Transformer_1P_1S T1
@@ -997,8 +884,6 @@ Wire Wire Line
 	9100 1700 9100 1800
 Wire Wire Line
 	9700 1700 9700 1800
-Wire Wire Line
-	10500 1000 10500 1100
 $Comp
 L Device:R R23
 U 1 1 60009534
@@ -1170,103 +1055,44 @@ Wire Wire Line
 $Comp
 L Switch:SW_Push SW2
 U 1 1 6027947B
-P 8400 2800
-F 0 "SW2" H 8400 3200 50  0000 C CNN
-F 1 "SW_Push" H 8700 3200 50  0000 C CNN
-F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 8400 3000 50  0001 C CNN
-F 3 "~" H 8400 3000 50  0001 C CNN
-	1    8400 2800
-	1    0    0    -1  
+P 1500 1300
+F 0 "SW2" H 1500 1700 50  0000 C CNN
+F 1 "SW_Push" H 1800 1700 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 1500 1500 50  0001 C CNN
+F 3 "~" H 1500 1500 50  0001 C CNN
+	1    1500 1300
+	-1   0    0    -1  
 $EndComp
 $Comp
 L Switch:SW_Push SW3
 U 1 1 6027B7C7
-P 8400 2900
-F 0 "SW3" H 8400 3300 50  0000 C CNN
-F 1 "SW_Push" H 8700 3300 50  0000 C CNN
-F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 8400 3100 50  0001 C CNN
-F 3 "~" H 8400 3100 50  0001 C CNN
-	1    8400 2900
-	1    0    0    -1  
+P 1500 1400
+F 0 "SW3" H 1500 1800 50  0000 C CNN
+F 1 "SW_Push" H 1800 1800 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 1500 1600 50  0001 C CNN
+F 3 "~" H 1500 1600 50  0001 C CNN
+	1    1500 1400
+	-1   0    0    -1  
 $EndComp
 $Comp
 L Switch:SW_Push SW4
 U 1 1 6027BD9C
-P 8400 3000
-F 0 "SW4" H 8400 3400 50  0000 C CNN
-F 1 "SW_Push" H 8700 3400 50  0000 C CNN
-F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 8400 3200 50  0001 C CNN
-F 3 "~" H 8400 3200 50  0001 C CNN
-	1    8400 3000
-	1    0    0    -1  
+P 1500 1500
+F 0 "SW4" H 1500 1900 50  0000 C CNN
+F 1 "SW_Push" H 1800 1900 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 1500 1700 50  0001 C CNN
+F 3 "~" H 1500 1700 50  0001 C CNN
+	1    1500 1500
+	-1   0    0    -1  
 $EndComp
 Wire Wire Line
-	7500 2600 5700 2600
-Connection ~ 7500 2600
-$Comp
-L Connector_Generic:Conn_01x02 J4
-U 1 1 602F0B97
-P 10300 900
-F 0 "J4" H 10380 892 50  0000 L CNN
-F 1 "AC" H 10380 801 50  0000 L CNN
-F 2 "TerminalBlock:TerminalBlock_Altech_AK300-3_P5.00mm" H 10300 900 50  0001 C CNN
-F 3 "~" H 10300 900 50  0001 C CNN
-	1    10300 900 
-	1    0    0    -1  
-$EndComp
-$Comp
-L Connector_Generic:Conn_01x02 J3
-U 1 1 602F1A53
-P 9800 900
-F 0 "J3" H 9880 892 50  0000 L CNN
-F 1 "AC" H 9880 801 50  0000 L CNN
-F 2 "TerminalBlock:TerminalBlock_Altech_AK300-3_P5.00mm" H 9800 900 50  0001 C CNN
-F 3 "~" H 9800 900 50  0001 C CNN
-	1    9800 900 
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	10500 1000 10600 1000
-Wire Wire Line
-	10500 800  10500 900 
-Wire Wire Line
-	10500 900  10600 900 
-Wire Wire Line
-	10000 800  10000 900 
-Wire Wire Line
-	10000 900  10100 900 
-Connection ~ 10000 800 
-Wire Wire Line
-	10000 800  9500 800 
-Wire Wire Line
-	9500 800  9500 900 
-Wire Wire Line
-	9500 900  9600 900 
-Connection ~ 9500 800 
-Wire Wire Line
-	10100 1000 10000 1000
-Wire Wire Line
-	10000 1000 10000 1100
-Wire Wire Line
-	10000 1100 10500 1100
-Wire Wire Line
-	10000 1100 9500 1100
-Wire Wire Line
-	9500 1100 9500 1000
-Wire Wire Line
-	9500 1000 9600 1000
-Connection ~ 10000 1100
-Wire Wire Line
-	9500 1100 9500 1600
-Connection ~ 9500 1100
+	9500 1200 9500 1600
 Connection ~ 9500 1600
-Wire Wire Line
-	8000 800  9500 800 
 $Comp
-L Device:R R?
+L Device:R R25
 U 1 1 60457D14
 P 9900 2900
-F 0 "R?" V 10000 2900 50  0000 C CNN
+F 0 "R25" V 10000 2900 50  0000 C CNN
 F 1 "5" V 9900 2900 50  0000 C CNN
 F 2 "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal" V 9830 2900 50  0001 C CNN
 F 3 "~" H 9900 2900 50  0001 C CNN
@@ -1284,12 +1110,12 @@ Connection ~ 10100 2900
 Wire Wire Line
 	10100 2900 10100 2700
 $Comp
-L Device:C C?
+L Device:C C5
 U 1 1 604A7238
 P 9300 3550
-F 0 "C?" V 9048 3550 50  0000 C CNN
-F 1 "460n" V 9139 3550 50  0000 C CNN
-F 2 "" H 9338 3400 50  0001 C CNN
+F 0 "C5" V 9048 3550 50  0000 C CNN
+F 1 "470n" V 9139 3550 50  0000 C CNN
+F 2 "Capacitor_THT:C_Rect_L7.0mm_W4.5mm_P5.00mm" H 9338 3400 50  0001 C CNN
 F 3 "~" H 9300 3550 50  0001 C CNN
 	1    9300 3550
 	0    1    1    0   
@@ -1308,12 +1134,12 @@ Wire Wire Line
 Connection ~ 9800 3550
 Connection ~ 9500 3550
 $Comp
-L Device:C C?
+L Device:C C7
 U 1 1 604F2868
 P 9900 3350
-F 0 "C?" V 9648 3350 50  0000 C CNN
+F 0 "C7" V 9648 3350 50  0000 C CNN
 F 1 "470n" V 9739 3350 50  0000 C CNN
-F 2 "" H 9938 3200 50  0001 C CNN
+F 2 "Capacitor_THT:C_Rect_L7.0mm_W4.5mm_P5.00mm" H 9938 3200 50  0001 C CNN
 F 3 "~" H 9900 3350 50  0001 C CNN
 	1    9900 3350
 	0    1    1    0   
@@ -1330,12 +1156,12 @@ Connection ~ 9700 3350
 Wire Wire Line
 	9700 3350 9700 2900
 $Comp
-L Device:C C?
+L Device:C C8
 U 1 1 605692A9
 P 10800 3800
-F 0 "C?" H 10685 3754 50  0000 R CNN
+F 0 "C8" H 10685 3754 50  0000 R CNN
 F 1 "470n" H 10685 3845 50  0000 R CNN
-F 2 "" H 10838 3650 50  0001 C CNN
+F 2 "Capacitor_THT:C_Rect_L7.0mm_W4.5mm_P5.00mm" H 10838 3650 50  0001 C CNN
 F 3 "~" H 10800 3800 50  0001 C CNN
 	1    10800 3800
 	-1   0    0    1   
@@ -1351,4 +1177,140 @@ Wire Wire Line
 Connection ~ 10400 4050
 Wire Wire Line
 	10400 4050 10400 4150
+$Comp
+L Device:C C2
+U 1 1 600EFE48
+P 1800 1750
+F 0 "C2" V 1548 1750 50  0000 C CNN
+F 1 "22n" V 1639 1750 50  0000 C CNN
+F 2 "Capacitor_THT:C_Disc_D4.3mm_W1.9mm_P5.00mm" H 1838 1600 50  0001 C CNN
+F 3 "~" H 1800 1750 50  0001 C CNN
+	1    1800 1750
+	1    0    0    1   
+$EndComp
+$Comp
+L Device:C C3
+U 1 1 600F3BF9
+P 2200 1750
+F 0 "C3" V 1948 1750 50  0000 C CNN
+F 1 "22n" V 2039 1750 50  0000 C CNN
+F 2 "Capacitor_THT:C_Disc_D4.3mm_W1.9mm_P5.00mm" H 2238 1600 50  0001 C CNN
+F 3 "~" H 2200 1750 50  0001 C CNN
+	1    2200 1750
+	1    0    0    1   
+$EndComp
+$Comp
+L Device:C C4
+U 1 1 600F400E
+P 2600 1750
+F 0 "C4" V 2348 1750 50  0000 C CNN
+F 1 "22n" V 2439 1750 50  0000 C CNN
+F 2 "Capacitor_THT:C_Disc_D4.3mm_W1.9mm_P5.00mm" H 2638 1600 50  0001 C CNN
+F 3 "~" H 2600 1750 50  0001 C CNN
+	1    2600 1750
+	1    0    0    1   
+$EndComp
+Wire Wire Line
+	4700 3300 4550 3300
+Wire Wire Line
+	4550 3300 4550 3000
+Wire Wire Line
+	4550 3000 3300 3000
+Wire Wire Line
+	3300 3000 3300 1500
+Wire Wire Line
+	3300 1500 2600 1500
+Connection ~ 2600 1500
+Wire Wire Line
+	4700 3200 4600 3200
+Wire Wire Line
+	4600 3200 4600 2900
+Wire Wire Line
+	4600 2900 3400 2900
+Wire Wire Line
+	3400 2900 3400 1400
+Wire Wire Line
+	3400 1400 2200 1400
+Connection ~ 2200 1400
+Wire Wire Line
+	4700 3100 4650 3100
+Wire Wire Line
+	4650 3100 4650 2800
+Wire Wire Line
+	4650 2800 3500 2800
+Wire Wire Line
+	3500 2800 3500 1300
+Wire Wire Line
+	3500 1300 1800 1300
+Connection ~ 1800 1300
+$Comp
+L Connector:Screw_Terminal_01x03 J3
+U 1 1 602C6C50
+P 9800 700
+F 0 "J3" H 9880 742 50  0000 L CNN
+F 1 "Screw_Terminal_01x03" H 9880 651 50  0000 L CNN
+F 2 "TerminalBlock:TerminalBlock_Altech_AK300-3_P5.00mm" H 9800 700 50  0001 C CNN
+F 3 "~" H 9800 700 50  0001 C CNN
+	1    9800 700 
+	1    0    0    -1  
+$EndComp
+$Comp
+L Connector:Screw_Terminal_01x03 J4
+U 1 1 602D5E02
+P 9800 1100
+F 0 "J4" H 9880 1142 50  0000 L CNN
+F 1 "Screw_Terminal_01x03" H 9880 1051 50  0000 L CNN
+F 2 "TerminalBlock:TerminalBlock_Altech_AK300-3_P5.00mm" H 9800 1100 50  0001 C CNN
+F 3 "~" H 9800 1100 50  0001 C CNN
+	1    9800 1100
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	9500 1200 9600 1200
+Wire Wire Line
+	9600 1200 9600 1100
+Connection ~ 9600 1200
+Wire Wire Line
+	9600 1100 9600 1000
+Connection ~ 9600 1100
+Wire Wire Line
+	8000 800  9600 800 
+Wire Wire Line
+	9600 700  9600 800 
+Connection ~ 9600 800 
+Wire Wire Line
+	9600 700  9600 600 
+Connection ~ 9600 700 
+Wire Wire Line
+	7000 2500 7000 2600
+Wire Wire Line
+	6900 2500 7000 2500
+$Comp
+L power:GND #PWR020
+U 1 1 600486BE
+P 7000 2600
+F 0 "#PWR020" H 7000 2350 50  0001 C CNN
+F 1 "GND" H 7005 2427 50  0000 C CNN
+F 2 "" H 7000 2600 50  0001 C CNN
+F 3 "" H 7000 2600 50  0001 C CNN
+	1    7000 2600
+	-1   0    0    -1  
+$EndComp
+$Comp
+L Switch:SW_SPST SW1
+U 1 1 60040B90
+P 6700 2500
+F 0 "SW1" H 6700 2735 50  0000 C CNN
+F 1 "SW_SPST" H 6700 2644 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 6700 2500 50  0001 C CNN
+F 3 "~" H 6700 2500 50  0001 C CNN
+	1    6700 2500
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6500 2500 5700 2500
+Wire Wire Line
+	6200 1500 6200 2600
+Wire Wire Line
+	6200 2600 5700 2600
 $EndSCHEMATC
