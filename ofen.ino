@@ -20,12 +20,12 @@
 
 #define GPIO_COIL_A 22
 #define GPIO_COIL_B 23
-#define ADC_SPEED_READING ADC1_GPIO34_CHANNEL
-#define ADC_SPEED_REFERENCE ADC1_GPIO35_CHANNEL
-#define ADC_TEMP_READING ADC1_GPIO33_CHANNEL
-#define ADC_POWER_REFERNECE ADC1_GPIO32_CHANNEL
-#define ADC_VOLTAGE_READING ADC1_GPIO36_CHANNEL
-#define ADC_CURRENT_READING ADC1_GPIO39_CHANNEL
+#define ADC_SPEED_READING ADC1_GPIO39_CHANNEL
+#define ADC_SPEED_REFERENCE ADC1_GPIO36_CHANNEL
+#define ADC_TEMP_READING ADC1_GPIO34_CHANNEL
+#define ADC_POWER_REFERNECE ADC1_GPIO35_CHANNEL
+#define ADC_VOLTAGE_READING ADC1_GPIO33_CHANNEL
+#define ADC_CURRENT_READING ADC1_GPIO32_CHANNEL
 #define POINT_50 400
 #define ADJUST_TEMPERATURE_THRESHHOLD 50
 
@@ -712,11 +712,17 @@ double adcToVoltage(int adcReading, float attenDB){
 }
 
 int voltageToTemp(double voltage){
-  int TMin = 0;
-  int TMax = 1300;
-  double UMin = 0;
-  double UMax = 0.052410;
-  return (TMax - TMin) / (UMax - UMin) * voltage;
+  int T1 = 0;
+  int T2 = 1300;
+  double U1 = 0;
+  double U2 = 0.052410 * 18.407;
+  double ambientTemp = 22.4;
+  double temp = (T2 - T1) / (U2 - U1) * voltage - ambientTemp;
+  Serial.print("voltage: ");
+  Serial.print(voltage);
+  Serial.print(", temp: ");
+  Serial.println(temp);
+  return temp;
 }
 
 void turnOn(){

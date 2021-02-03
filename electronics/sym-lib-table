@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name ofen-rescue)(type Legacy)(uri ${KIPRJMOD}/ofen-rescue.lib)(options "")(descr ""))
+)
