@@ -46,10 +46,17 @@
 
 #define VOLTAGE_MULTIPLIER 935
 #define CURRENT_MULTIPLIER 50
-#define ADC_CAL_M_ATTEN_0 0.00024504
-#define ADC_CAL_N_ATTEN_0 0.05922589
+#define ADC_CAL_M_ATTEN_0 0.00023437099
+#define ADC_CAL_N_ATTEN_0 0.0780530051
 #define ADC_CAL_M_ATTEN_11 0.00080334
 #define ADC_CAL_N_ATTEN_11 0.13154864
+
+#define TYPE_K_M 24458.3257
+#define TYPE_K_N -3.4684894
+
+#define OPV_GAIN 18.407
+#define OPV_OFFSET_VOLTAGE 0.1
+#define AMBIENT_TEMP 22.0
 
 WiFiClient *clients[MAX_CLIENTS] = { NULL };
 
@@ -100,6 +107,8 @@ struct buttonStates{
 };
 
 double power = 0;
+
+double adcAvg = 0;
 
 volatile uint8_t accessingFlash = 0;
 
@@ -607,7 +616,7 @@ void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char i
   formatTime(timeString, getElapsedMinutes());
   appendLargeText(dynamicDisplay, timeString, 0, 0);
   char tempString[15] = {};
-  int temp = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING), 0));
+  int temp = voltageToTemp(adcToVoltage(adcAvg, 0));
   if(temp > 9999){
     sprintf(tempString, "----oC/%4doC", getCurrentSetpoint(getElapsedMinutes()));
   }else {
@@ -680,9 +689,9 @@ uint8_t dutycycleCounter = 0;
 double input = 0;
 double output = 0;
 double setpoint = 0;
-double Kp = 0;
-double Ki = 0;
-double Kd = 0;
+double Kp = 1;
+double Ki = 1;
+double Kd = 1;
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 PID_ATune PIDAutotune(&input, &output);
@@ -712,16 +721,7 @@ double adcToVoltage(int adcReading, float attenDB){
 }
 
 int voltageToTemp(double voltage){
-  int T1 = 0;
-  int T2 = 1300;
-  double U1 = 0;
-  double U2 = 0.052410 * 18.407;
-  double ambientTemp = 22.4;
-  double temp = (T2 - T1) / (U2 - U1) * voltage - ambientTemp;
-  Serial.print("voltage: ");
-  Serial.print(voltage);
-  Serial.print(", temp: ");
-  Serial.println(temp);
+  double temp = TYPE_K_M * (voltage - OPV_OFFSET_VOLTAGE) / OPV_GAIN + TYPE_K_N + AMBIENT_TEMP;
   return temp;
 }
 
@@ -882,10 +882,10 @@ void commandHandler(char command[]){
   } else if (strcmp(command, "PIDAutotune") == 0) {
     Serial.println("Starting PID autotune");
     pid.SetMode(MANUAL);
-    PIDAutotune.SetOutputStep(50);
+    PIDAutotune.SetOutputStep(20);
     PIDAutotune.SetControlType(1);
     PIDAutotune.SetNoiseBand(5);
-    PIDAutotune.SetLookbackSec(10);
+    PIDAutotune.SetLookbackSec(20);
     PIDAutotuning = 1;
     Serial.println("");
   } else if (strcmp(command, "cancelPIDAutotune") == 0) {
@@ -899,6 +899,18 @@ void commandHandler(char command[]){
     updatePIDTunings();
     Serial.println("saved PID tunings!");
     Serial.println("");
+  } else if (strcmp(command, "readTemp") == 0){
+    float adcAvg = 0;
+    for(int i = 0; i < 100; i++){
+      adcAvg += adc1_get_raw(ADC_TEMP_READING) / 100.0;
+      delay(20);
+    }
+    Serial.print("ADC raw: ");
+    Serial.print(adcAvg, 3);
+    Serial.print(", voltage: ");
+    Serial.print(adcToVoltage(adcAvg, 0), 8);
+    Serial.print(", temp: ");
+    Serial.println(voltageToTemp(adcToVoltage(adcAvg, 0)));
   }
 }
 
@@ -978,13 +990,15 @@ void core1(){
   readSetpointSave();
 
   pid.SetSampleTime(1000);
-  pid.SetOutputLimits(0, 100);
+  pid.SetOutputLimits(0, 40);
 
   uint16_t voltages[100] = {};
   uint16_t currents[100] = {};
 
   while(true){
     double aggregatedPower = 0;
+
+    uint32_t adcCollection = 0;
 
     for (size_t i = 0; i < 1000; i++) {
       buttonHandler();
@@ -994,12 +1008,18 @@ void core1(){
       double reference = adcToVoltage(adc1_get_raw(ADC_POWER_REFERNECE), 0);
 
       aggregatedPower += (voltage - reference) * (current - reference);
+
+      adcCollection += adc1_get_raw(ADC_TEMP_READING);
     }
+
+    adcAvg = adcCollection / 1000.0;
+
+    Serial.println((adcToVoltage(adcAvg, 0) - OPV_OFFSET_VOLTAGE) / OPV_GAIN, 8);
 
     power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
 
     if(buttonStates.onOffSwitch == 1 && pid.Compute()){
-      input = voltageToTemp(adcToVoltage(adc1_get_raw(ADC_TEMP_READING), 0));
+      input = voltageToTemp(adcToVoltage(adcAvg, 0));
       setpoint = getCurrentSetpoint(getElapsedMinutes());
     }
 

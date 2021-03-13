@@ -14,7 +14,7 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L Custom:ESP32 U1
+L ofen-rescue:ESP32-Custom U1
 U 1 1 5FF1B380
 P 5200 3000
 F 0 "U1" H 5200 3965 50  0000 C CNN
