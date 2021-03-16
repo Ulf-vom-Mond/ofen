@@ -7,9 +7,8 @@ ofen.ino.bin
 ofen.ino.eep
 ofen.ino.elf
 ofen.ino.hex
-test.exe
-test.c
 test
+test/*
 build/*
 arduino.map
 CMakeLists.txt

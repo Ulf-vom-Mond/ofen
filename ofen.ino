@@ -11,52 +11,62 @@
 #include "soc/rtc_wdt.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include <math.h>
 
 #define MAX_CLIENTS 5
 
-#define DISPLAY_WIDTH 84
+#define DISPLAY_WIDTH  84
 #define DISPLAY_HEIGHT 20
 #define DISPLAY_LENGTH (DISPLAY_WIDTH * DISPLAY_HEIGHT * 3) + 1
 
-#define GPIO_COIL_A 22
-#define GPIO_COIL_B 23
-#define ADC_SPEED_READING ADC1_GPIO39_CHANNEL
-#define ADC_SPEED_REFERENCE ADC1_GPIO36_CHANNEL
-#define ADC_TEMP_READING ADC1_GPIO34_CHANNEL
-#define ADC_POWER_REFERNECE ADC1_GPIO35_CHANNEL
-#define ADC_VOLTAGE_READING ADC1_GPIO33_CHANNEL
-#define ADC_CURRENT_READING ADC1_GPIO32_CHANNEL
-#define POINT_50 400
-#define ADJUST_TEMPERATURE_THRESHHOLD 50
+#define GPIO_LEFT        21
+#define GPIO_MIDDLE      19
+#define GPIO_RIGHT       18
+#define GPIO_SWITCH      13
+#define GPIO_HEATER      12
+#define GPIO_COIL_A      22
+#define GPIO_COIL_B      23
 
-#define GPIO_LEFT   21
-#define GPIO_MIDDLE 19
-#define GPIO_RIGHT  18
-#define GPIO_SWITCH 13
-#define GPIO_HEATER 12
+#define ADC_SPEED_READING     ADC1_GPIO36_CHANNEL
+#define ADC_THERMISTOR_TEMP   ADC1_GPIO39_CHANNEL
+#define ADC_THERMOCOUPLE_TEMP ADC1_GPIO34_CHANNEL
+#define ADC_POWER_REFERNECE   ADC1_GPIO35_CHANNEL
+#define ADC_VOLTAGE_READING   ADC1_GPIO33_CHANNEL
+#define ADC_CURRENT_READING   ADC1_GPIO32_CHANNEL
 
-#define SETPOINTS_COUNT 12
+#define POINT_50                      400
+#define ADJUST_TEMPERATURE_THRESHHOLD 1013
+
+#define SETPOINTS_COUNT        12
 #define SETPOINT_SAVE_INTERVAL 10000
+
 #define TIME_AXIS_LENGTH (DISPLAY_WIDTH - 4 - 1 - 1 - 12)
 #define TEMP_AXIS_LENGTH (DISPLAY_HEIGHT - 4 - 1)
-#define ORIGIN_X 4
-#define ORIGIN_Y DISPLAY_HEIGHT - 2
+#define ORIGIN_X         4
+#define ORIGIN_Y         DISPLAY_HEIGHT - 2
 
 #define LONG_PRESS 400
 
 #define VOLTAGE_MULTIPLIER 935
 #define CURRENT_MULTIPLIER 50
-#define ADC_CAL_M_ATTEN_0 0.00023437099
-#define ADC_CAL_N_ATTEN_0 0.0780530051
+#define ADC_CAL_M_ATTEN_0  0.00023437099
+#define ADC_CAL_N_ATTEN_0  0.0780530051
 #define ADC_CAL_M_ATTEN_11 0.00080334
 #define ADC_CAL_N_ATTEN_11 0.13154864
 
 #define TYPE_K_M 24458.3257
 #define TYPE_K_N -3.4684894
 
-#define OPV_GAIN 18.407
+#define OPV_GAIN           18.407
 #define OPV_OFFSET_VOLTAGE 0.1
-#define AMBIENT_TEMP 22.0
+
+#define R1   15000
+#define R2   6800
+#define R3   330
+#define U_IN 3.3
+#define A    0.0007663389251
+#define B    0.0002093245863
+#define C    0.0000001092601201
 
 WiFiClient *clients[MAX_CLIENTS] = { NULL };
 
@@ -116,10 +126,10 @@ void IRAM_ATTR coilAReset();
 void IRAM_ATTR coilBReset();
 
 void adjustSetpoint(int *multiplier){
-  int speed = adc1_get_raw(ADC_SPEED_READING) - adc1_get_raw(ADC_SPEED_REFERENCE);
+  int speed = adc1_get_raw(ADC_SPEED_READING) - ADJUST_TEMPERATURE_THRESHHOLD;
   int adjustment = 1;
-  if(speed >= ADJUST_TEMPERATURE_THRESHHOLD){
-    adjustment = *multiplier * (pow(((double)speed - ADJUST_TEMPERATURE_THRESHHOLD) / (POINT_50 - ADJUST_TEMPERATURE_THRESHHOLD), 2) * 49 + 1);
+  if(speed >= 0){
+    adjustment = *multiplier * (pow(((double)speed) / (POINT_50), 2) * 49 + 1);
   }
 
   setpoints[(int)(selected_field / 2)][selected_field % 2] += adjustment;
@@ -616,7 +626,7 @@ void generateDynamicDisplay(char dynamicDisplay[DISPLAY_LENGTH], unsigned char i
   formatTime(timeString, getElapsedMinutes());
   appendLargeText(dynamicDisplay, timeString, 0, 0);
   char tempString[15] = {};
-  int temp = voltageToTemp(adcToVoltage(adcAvg, 0));
+  int temp = getTemp();
   if(temp > 9999){
     sprintf(tempString, "----oC/%4doC", getCurrentSetpoint(getElapsedMinutes()));
   }else {
@@ -711,7 +721,7 @@ void IRAM_ATTR pwmISR(void *param){
   TIMERG0.int_clr_timers.t0 = 0;
 }
 
-double adcToVoltage(int adcReading, float attenDB){
+double adcToVoltage(double adcReading, float attenDB){
   if (attenDB == 0) {
     return ADC_CAL_M_ATTEN_0 * adcReading + ADC_CAL_N_ATTEN_0;
   } else if (attenDB == 11) {
@@ -720,9 +730,18 @@ double adcToVoltage(int adcReading, float attenDB){
   return 0;
 }
 
-int voltageToTemp(double voltage){
-  double temp = TYPE_K_M * (voltage - OPV_OFFSET_VOLTAGE) / OPV_GAIN + TYPE_K_N + AMBIENT_TEMP;
-  return temp;
+double thermocoupleVoltageToTemp(double voltage){
+  return TYPE_K_M * (voltage - OPV_OFFSET_VOLTAGE) / OPV_GAIN + TYPE_K_N;
+}
+
+double thermistorVoltageToTemp(double voltage){
+  double thermistor_resistance = 1.0 / (U_IN/voltage/R1 - 1.0/R1 - 1.0/R2) - R3;
+  double temp = 1 / (A + B * log(thermistor_resistance) + C * pow(log(thermistor_resistance), 3));
+  return temp - 273.15;
+}
+
+double getTemp(){
+  return thermocoupleVoltageToTemp(adcToVoltage(adc1_get_raw(ADC_THERMOCOUPLE_TEMP), 0)) + thermistorVoltageToTemp(adcToVoltage(adc1_get_raw(ADC_THERMISTOR_TEMP), 0));
 }
 
 void turnOn(){
@@ -902,7 +921,7 @@ void commandHandler(char command[]){
   } else if (strcmp(command, "readTemp") == 0){
     float adcAvg = 0;
     for(int i = 0; i < 100; i++){
-      adcAvg += adc1_get_raw(ADC_TEMP_READING) / 100.0;
+      adcAvg += adc1_get_raw(ADC_THERMOCOUPLE_TEMP) / 100.0;
       delay(20);
     }
     Serial.print("ADC raw: ");
@@ -910,7 +929,7 @@ void commandHandler(char command[]){
     Serial.print(", voltage: ");
     Serial.print(adcToVoltage(adcAvg, 0), 8);
     Serial.print(", temp: ");
-    Serial.println(voltageToTemp(adcToVoltage(adcAvg, 0)));
+    Serial.println(getTemp());
   }
 }
 
@@ -982,7 +1001,7 @@ void core1(){
 
   pinMode(GPIO_SWITCH, INPUT_PULLUP);
 
-  adc1_config_channel_atten(ADC_TEMP_READING, ADC_ATTEN_DB_0);
+  adc1_config_channel_atten(ADC_THERMOCOUPLE_TEMP, ADC_ATTEN_DB_0);
   adc1_config_channel_atten(ADC_VOLTAGE_READING, ADC_ATTEN_DB_0);
   adc1_config_channel_atten(ADC_CURRENT_READING, ADC_ATTEN_DB_0);
   adc1_config_channel_atten(ADC_POWER_REFERNECE, ADC_ATTEN_DB_0);
@@ -1009,7 +1028,7 @@ void core1(){
 
       aggregatedPower += (voltage - reference) * (current - reference);
 
-      adcCollection += adc1_get_raw(ADC_TEMP_READING);
+      adcCollection += adc1_get_raw(ADC_THERMOCOUPLE_TEMP);
     }
 
     adcAvg = adcCollection / 1000.0;
@@ -1019,7 +1038,7 @@ void core1(){
     power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
 
     if(buttonStates.onOffSwitch == 1 && pid.Compute()){
-      input = voltageToTemp(adcToVoltage(adcAvg, 0));
+      input = getTemp();
       setpoint = getCurrentSetpoint(getElapsedMinutes());
     }
 
@@ -1088,7 +1107,7 @@ void setup() {
 
   adc1_config_width(ADC_WIDTH_BIT_12);
   adc1_config_channel_atten(ADC_SPEED_READING, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(ADC_SPEED_REFERENCE, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(ADC_THERMISTOR_TEMP, ADC_ATTEN_DB_11);
 
   Serial.println("Configuring access point...");
 
