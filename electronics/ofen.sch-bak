@@ -627,7 +627,7 @@ U 1 1 6022B679
 P 6900 1200
 F 0 "U2" H 6900 1525 50  0000 C CNN
 F 1 "MOC3041M" H 6900 1434 50  0000 C CNN
-F 2 "Package_DIP:DIP-6_W7.62mm_LongPads" H 6700 1000 50  0001 L CIN
+F 2 "Package_DIP:DIP-6_W7.62mm_Socket_LongPads" H 6700 1000 50  0001 L CIN
 F 3 "https://www.onsemi.com/pub/Collateral/MOC3043M-D.pdf" H 6900 1200 50  0001 L CNN
 	1    6900 1200
 	1    0    0    -1  
