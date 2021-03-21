@@ -659,7 +659,7 @@ Wire Wire Line
 Wire Wire Line
 	6700 4900 6800 4900
 Wire Wire Line
-	7500 5000 7500 5600
+	7500 5000 7500 5300
 Wire Wire Line
 	7500 5700 7500 5600
 Connection ~ 7500 5600
@@ -698,7 +698,7 @@ Wire Wire Line
 Wire Wire Line
 	7700 5000 7800 5000
 Wire Wire Line
-	7800 4800 7400 4800
+	7800 4800 7600 4800
 Wire Wire Line
 	6700 3400 5700 3400
 Connection ~ 6700 4900
@@ -1313,4 +1313,39 @@ Wire Wire Line
 	6200 1500 6200 2600
 Wire Wire Line
 	6200 2600 5700 2600
+$Comp
+L Device:R R26
+U 1 1 60135609
+P 7600 5050
+F 0 "R26" H 7700 4900 50  0000 R CNN
+F 1 "15k" V 7600 5125 50  0000 R CNN
+F 2 "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal" V 7530 5050 50  0001 C CNN
+F 3 "~" H 7600 5050 50  0001 C CNN
+	1    7600 5050
+	1    0    0    1   
+$EndComp
+Wire Wire Line
+	7600 4900 7600 4800
+Connection ~ 7600 4800
+Wire Wire Line
+	7600 4800 7400 4800
+Wire Wire Line
+	7600 5200 7600 5300
+Wire Wire Line
+	7600 5300 7500 5300
+Connection ~ 7500 5300
+Wire Wire Line
+	7500 5300 7500 5600
+NoConn ~ 5700 2700
+NoConn ~ 5700 2800
+NoConn ~ 5700 2900
+NoConn ~ 5700 3000
+NoConn ~ 4700 2500
+NoConn ~ 4700 2600
+NoConn ~ 4700 2700
+NoConn ~ 4700 2800
+NoConn ~ 4700 2900
+NoConn ~ 4700 3000
+NoConn ~ 4700 3400
+NoConn ~ 4700 3500
 $EndSCHEMATC

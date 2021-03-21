@@ -45,7 +45,7 @@
 #define LONG_PRESS 400
 
 #define VOLTAGE_MULTIPLIER 935
-#define CURRENT_MULTIPLIER 50
+#define CURRENT_MULTIPLIER 91
 #define ADC_CAL_M_ATTEN_0 0.00023437099
 #define ADC_CAL_N_ATTEN_0 0.0780530051
 #define ADC_CAL_M_ATTEN_11 0.00080334
@@ -836,7 +836,7 @@ void updatePIDTunings(){
   uint64_t timerValue = 17;
   timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
 
-  while (timerValue >= 15) {
+  while (timerValue >= 14) {
     timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
   }
 
@@ -911,6 +911,12 @@ void commandHandler(char command[]){
     Serial.print(adcToVoltage(adcAvg, 0), 8);
     Serial.print(", temp: ");
     Serial.println(voltageToTemp(adcToVoltage(adcAvg, 0)));
+  } else if (strcmp(command, "constantOutput") == 0) {
+    buttonStates.onOffSwitch = 1;
+    output = getCurrentSetpoint(0);
+    buttonStates.onOffSwitch = 0;
+    Serial.println(output);
+    timer_start(TIMER_GROUP_0, TIMER_0);
   }
 }
 
@@ -937,10 +943,6 @@ void updateSetpointsSave(){
     nvs_open("nvs", NVS_READWRITE, &nvsHandle);
 
     for (size_t i = 0; i < SETPOINTS_COUNT * 2; i++) {
-      if(setpoints[(int)(i / 2)][i % 2] == -1){
-        break;
-      }
-
       char key[13] = {};
       sprintf(key, "setpoint_%d", i);
 
@@ -948,13 +950,13 @@ void updateSetpointsSave(){
 
       uint64_t timerValue = 17;
       timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
-      while (timerValue >= 15) {
+      while (timerValue >= 14) {
         timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &timerValue);
       }
 
       nvs_get_i16(nvsHandle, key, &currentValue);
 
-      if (currentValue != setpoints[(int)(i / 2)][i % 2]) {
+      if (currentValue != setpoints[(int)(i / 2)][i % 2] && currentValue != -1) {
         nvs_set_i16(nvsHandle, key, setpoints[(int)(i / 2)][i % 2]);
       }
 
@@ -992,31 +994,36 @@ void core1(){
   pid.SetSampleTime(1000);
   pid.SetOutputLimits(0, 40);
 
-  uint16_t voltages[100] = {};
-  uint16_t currents[100] = {};
-
   while(true){
     double aggregatedPower = 0;
-
     uint32_t adcCollection = 0;
 
     for (size_t i = 0; i < 1000; i++) {
       buttonHandler();
 
-      double voltage = adcToVoltage(adc1_get_raw(ADC_VOLTAGE_READING), 0);
-      double current = adcToVoltage(adc1_get_raw(ADC_CURRENT_READING), 0);
       double reference = adcToVoltage(adc1_get_raw(ADC_POWER_REFERNECE), 0);
+      double voltage   = adcToVoltage(adc1_get_raw(ADC_VOLTAGE_READING), 0);
+      double current   = adcToVoltage(adc1_get_raw(ADC_CURRENT_READING), 0);
 
-      aggregatedPower += (voltage - reference) * (current - reference);
+      int current_sign = current >= reference ? 1 : -1;
+      int voltage_sign = voltage >= reference ? 1 : -1;
+
+      current = abs(current - reference);
+      voltage = abs(voltage - reference);
+
+      current = current < 0.11243 ? 70.75722   * current + 0.44717  : 27.80653  * current + 5.27599;
+      voltage = voltage < 0.10757 ? 1486.88359 * voltage - 12.96617 : 600.48206 * voltage + 82.38326;
+
+      current *= current_sign;
+      voltage *= voltage_sign;
+
+      aggregatedPower += voltage * current;
 
       adcCollection += adc1_get_raw(ADC_TEMP_READING);
     }
 
-    adcAvg = adcCollection / 1000.0;
-
-    Serial.println((adcToVoltage(adcAvg, 0) - OPV_OFFSET_VOLTAGE) / OPV_GAIN, 8);
-
-    power = aggregatedPower / 1000 * CURRENT_MULTIPLIER * VOLTAGE_MULTIPLIER;
+    adcAvg = adcCollection   / 1000.0;
+    power  = aggregatedPower / 1000.0;
 
     if(buttonStates.onOffSwitch == 1 && pid.Compute()){
       input = voltageToTemp(adcToVoltage(adcAvg, 0));
